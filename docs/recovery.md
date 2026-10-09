@@ -31,11 +31,34 @@ again. Only the first step, which replaces Qidi's bootloader, needs care.
 
 ## Going back to stock
 
-Qidi's bootloader is replaced by Katapult during the first conversion, and Qidi's stock
-images are linked for that bootloader, so **a full return to stock needs an ST-Link**
-(flash Qidi's bootloader and firmware back).
+**No ST-Link is needed to put Qidi's firmware back.** Qidi links its three MCU images to
+start at 0x8008000 and they keep Katapult's bootloader-request support, so they can be
+flashed through Katapult like our Klipper images. Katapult stays installed, so the
+printer can be converted again later without a deployer.
 
-The printer board itself is not modified beyond configuration: `sudo bash
-~/q2-offload/q2-printer.sh stock-start` re-enables Qidi's Klipper, Moonraker and touchscreen
-UI, and the config backup made before the conversion is in `~/q2-offload/backup-*.tgz` on
-the printer.
+| MCU | Qidi image | Katapult application start | Flash |
+|---|---|---|---|
+| Mainboard | `QD_Q2_MCU` | 0x8008000 (same as Qidi) | as is |
+| Toolhead | `QD_Q2_THR` | 0x8002000 | after moving the image to 0x8008000 (padding) |
+| Qidi Box | `mcu_box_to_v2_1.1.3.bin` | 0x8004000 | after moving the image to 0x8008000 (padding) |
+
+Where to get the images: the printer board keeps them (`~/bck_firmware/QD_Q2_MCU`,
+`~/bck_firmware/QD_Q2_THR`, `~/mcu_box_to_v2_1.1.3.bin`), and Qidi publishes them in the
+`Q2_V1.1.1` release of [QIDITECH/QIDI_Q2](https://github.com/QIDITECH/QIDI_Q2/releases).
+
+Status: this is checked against the images (vector tables, link address), **not yet on
+hardware**, and `./install.sh` has no `uninstall` command yet: it will build the padded
+toolhead and Box images, check each image's MCU type and offset before writing, and
+restore the printer board services. Until then, ask in the issues before trying it.
+
+What stays changed:
+
+- Qidi's own bootloader is replaced by Katapult, so Qidi's firmware updates (their
+  update scripts look for Qidi's bootloader) will not work. Putting Qidi's bootloader back
+  needs an ST-Link, or a "reverse deployer" for the mainboard and toolhead (bootloader dumps
+  exist in [MisterSheikh/Qidi_Q2_Mainline_Klipper](https://github.com/MisterSheikh/Qidi_Q2_Mainline_Klipper),
+  none for the Box); not provided.
+- The printer board itself is not modified beyond configuration: `sudo bash
+  ~/q2-offload/q2-printer.sh stock-start` re-enables Qidi's Klipper, Moonraker and
+  touchscreen UI, and the config backup made before the conversion is in
+  `~/q2-offload/backup-*.tgz` on the printer.

@@ -25,8 +25,9 @@ recovery, and the web UIs.
 > [!CAUTION]
 > This replaces Qidi's firmware on three microcontrollers. The **first** conversion
 > replaces Qidi's bootloader with Katapult: a power cut during that step, or a wrong
-> image, can only be recovered with an ST-Link. Going back to stock also needs an
-> ST-Link. Read [docs/recovery.md](docs/recovery.md) before starting. No warranty
+> image, can only be recovered with an ST-Link. Going back to Qidi's firmware does not
+> need one: Qidi's MCU images can be flashed back through Katapult (not automated yet).
+> Read [docs/recovery.md](docs/recovery.md) before starting. No warranty
 > (GPL-3.0); you do this at your own risk.
 
 ## What you need

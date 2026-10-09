@@ -84,8 +84,9 @@ printer_convert() {
 
 ${C_WARN}First conversion: Katapult bootloader on the three MCUs${C_OFF}
 Qidi's own update scripts flash a Katapult "deployer" (n3oney/qidi-q2-klipper) while the
-stock firmware still runs. Afterwards the stock Qidi bootloader is GONE: going back to
-stock, or recovering from a power cut during this step, needs an ST-Link.
+stock firmware still runs. Afterwards Katapult replaces Qidi's bootloader: Qidi's firmware
+can still be flashed back through Katapult (docs/recovery.md), but recovering from a power
+cut during THIS step needs an ST-Link.
   - keep the printer powered and connected the whole time
   - one MCU at a time; each one is checked before the next
 EOF
