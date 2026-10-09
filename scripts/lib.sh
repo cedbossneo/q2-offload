@@ -72,10 +72,14 @@ apply_patches() {
     done
 }
 
-# Identifier of a firmware build: Klipper ref + hash of the patch series and build configs.
+# Identifier of a firmware build: Klipper ref + hash of the build configs and of the patches
+# that reach the MCU build. A host-only patch (klippy/ only) must not ask users to reflash.
 firmware_id() {
-    local sum
-    sum="$(cat "${Q2_ROOT}"/patches/klipper/*.patch "${Q2_ROOT}"/firmware/configs/*.config \
+    local sum p fw_patches=()
+    for p in "${Q2_ROOT}"/patches/klipper/*.patch; do
+        grep '^diff --git a/' "$p" | grep -qv '^diff --git a/klippy/' && fw_patches+=("$p")
+    done
+    sum="$(cat "${fw_patches[@]}" "${Q2_ROOT}"/firmware/configs/*.config \
         | sha256sum | cut -c1-8)"
     printf '%s-%s\n' "${KLIPPER_REF:0:9}" "$sum"
 }

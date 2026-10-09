@@ -1,0 +1,73 @@
+From 97c1f6e7e9b671f2840bd66f5d58bb7b86bea6a0 Mon Sep 17 00:00:00 2001
+From: Cedric Hauber <cedric@MacBook-Pro-de-Cedric-2.local>
+Date: Fri, 9 Oct 2026 15:30:55 +0200
+Subject: [PATCH] load_cell_probe: stop the sample collector when a probe fails
+
+probing_move() starts a LoadCellSampleCollector before the homing move.
+If the move raises (e.g. "Communication timeout during homing") the
+collector is never finished: it stays registered with no end time and
+appends every sample (640/s on a CS1237) for the rest of the session.
+The growing heap makes each full garbage collection longer until a
+reactor stall exceeds the step buffer and the MCU shuts down with
+"Timer too close", about 45 minutes into the next print.
+
+Stop the collector on any exception in probing_move() and in run_tap().
+
+Signed-off-by: Cedric Hauber <hauber.c@gmail.com>
+---
+ klippy/extras/load_cell_probe.py | 24 +++++++++++++++++++-----
+ 1 file changed, 19 insertions(+), 5 deletions(-)
+
+diff --git a/klippy/extras/load_cell_probe.py b/klippy/extras/load_cell_probe.py
+index e8cbc6441..b1470c89c 100644
+--- a/klippy/extras/load_cell_probe.py
++++ b/klippy/extras/load_cell_probe.py
+@@ -373,7 +373,12 @@ class LoadCellProbingMove:
+         # start collector after tare samples are consumed
+         collector = self._start_collector()
+         # do homing move
+-        epos = phoming.probing_move(self._mcu_trigger_analog, pos, speed)
++        try:
++            epos = phoming.probing_move(self._mcu_trigger_analog, pos, speed)
++        except:
++            # a collector left running keeps every sample forever
++            collector.stop_collecting()
++            raise
+         return epos, collector
+ 
+     # Wait for the MCU to trigger with no movement
+@@ -409,10 +414,8 @@ class TappingMove:
+             "load_cell_probe", name, header)
+         self._best_fit = LCBestFit(self._printer)
+ 
+-    def run_tap(self, gcmd):
+-        # do the descending move
+-        epos, collector = self._load_cell_probing_move.probing_move(gcmd)
+-        # collect samples from the tap
++    # collect samples from the tap
++    def _collect_tap(self, gcmd, epos, collector):
+         toolhead = self._printer.lookup_object('toolhead')
+         # Homing workaround
+         phoming = self._printer.lookup_object('homing')
+@@ -439,7 +442,18 @@ class TappingMove:
+         move_end = toolhead.get_last_move_time()
+         results = collector.collect_until(move_end)
+         samples = check_sensor_errors(results, self._printer)
++        return samples, ascent_start_time
+ 
++    def run_tap(self, gcmd):
++        # do the descending move
++        epos, collector = self._load_cell_probing_move.probing_move(gcmd)
++        try:
++            samples, ascent_start_time = self._collect_tap(gcmd, epos,
++                                                           collector)
++        except:
++            collector.stop_collecting()
++            raise
++        toolhead = self._printer.lookup_object('toolhead')
+         # Perform fit on the ascent data
+         corrected_z = self._analyze_ascent(gcmd, samples, ascent_start_time,
+                                             toolhead, epos[2])
+-- 
+2.54.0 (Apple Git-157)
+
