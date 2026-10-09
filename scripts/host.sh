@@ -177,10 +177,15 @@ moonraker_sysdeps() {
 # Moonraker restarts the services listed in managed_services after updating a repo: the
 # q2-offload entry triggers q2-offload.service, which runs "install.sh update".
 moonraker_conf_migrate() {
-    python3 - "${CFG}/moonraker.conf" <<'EOF'
+    python3 - "${CFG}/moonraker.conf" "${DATA}/comms/klippy.sock" <<'EOF'
 import re, sys
-path = sys.argv[1]
+path, klippy_sock = sys.argv[1], sys.argv[2]
 s = open(path).read()
+# Without it Moonraker waits on /tmp/klippy_uds and never sees Klipper (configs from older installs)
+srv = re.search(r'^\[server\]\n', s, re.M)
+if srv and not re.search(r'^klippy_uds_address\s*:', s, re.M):
+    s = s[:srv.end()] + 'klippy_uds_address: %s\n' % klippy_sock + s[srv.end():]
+    open(path, 'w').write(s)
 m = re.search(r'^\[update_manager q2-offload\]\n((?:[^\[\n].*\n|\n)*)', s, re.M)
 if m and 'managed_services' not in m.group(1):
     body = re.sub(r'^is_system_service:.*\n', '', m.group(1), flags=re.M)
@@ -373,6 +378,7 @@ host_services() {
 }
 
 host_start() {
+    info "Starting the serial bridges, Klipper and Moonraker on this host"
     sudo systemctl restart q2-serial-bridge@main:7001 q2-serial-bridge@thr:7002 q2-serial-bridge@mmu:7003
     sleep 2
     sudo systemctl restart klipper moonraker

@@ -123,6 +123,7 @@ EOF
 
 wait_ready() {
     local state
+    info "Waiting for Klipper to connect to the three MCUs (up to 2 minutes)"
     for _ in $(seq 1 60); do
         state="$(curl -s localhost:7125/printer/info 2>/dev/null | sed -n 's/.*"state": *"\([a-z]*\)".*/\1/p')"
         [ "$state" = ready ] && { ok "Klipper is ready"; return 0; }
@@ -151,8 +152,7 @@ EOF
     confirm "Continue?" n || exit 0
     host_install_all
     host_firmware
-    printer_ssh_key
-    printer_push
+    printer_prepare
     proot backup
     if [ -z "$(printer_firmware_id)" ] \
         && confirm "Is this the first conversion from Qidi's STOCK firmware?" y; then
@@ -177,8 +177,7 @@ do_update() {
     host_firmware
     if [ "$(printer_firmware_id)" != "$(firmware_id)" ]; then
         info "MCU firmware changes ($(printer_firmware_id) -> $(firmware_id)): Klipper and MCUs must match"
-        printer_ssh_key
-        printer_push
+        printer_prepare
         printer_convert
         proot proxies-start
     fi
@@ -283,7 +282,7 @@ case "$command" in
     _update-check) do_update_check ;;
     _update-user) do_update_user ;;
     host) preflight; banner; host_install_all; in_ci || host_start ;;
-    printer) preflight; printer_ssh_key; printer_push; printer_proxies; printer_helixscreen ;;
-    flash) preflight; printing && die "a print is running"; host_firmware; printer_ssh_key; printer_push; printer_convert; proot proxies-start; host_start ;;
+    printer) preflight; printer_prepare; printer_proxies; printer_helixscreen ;;
+    flash) preflight; printing && die "a print is running"; host_firmware; printer_prepare; printer_convert; proot proxies-start; host_start ;;
     status) do_status ;;
 esac

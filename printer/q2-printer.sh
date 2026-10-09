@@ -14,6 +14,7 @@
 #   q2-printer.sh setup <klipper-host-ip>          (proxy-install + stock-stop + proxies-start + sudoers)
 #   q2-printer.sh sudoers                          (passwordless sudo for this script only)
 #   q2-printer.sh status
+#   q2-printer.sh helixscreen-restart
 set -Eeuo pipefail
 
 USER_HOME="${Q2_PRINTER_HOME:-/home/mks}"
@@ -166,9 +167,9 @@ cmd_katapult_status() {
     dev="$(katapult_device "$m")"
     [ -n "$dev" ] || die "${m}: no Katapult device (is the MCU in its bootloader?)"
     if [ "$m" = thr ]; then
-        out="$(flashtool -d "$dev" -b "$THR_BAUD" -s 2>&1)" || { echo "$out" >&2; die "${m}: flashtool status failed"; }
+        out="$(flashtool -d "$dev" -b "$THR_BAUD" -s 2>&1 | tr -d '\0')" || { echo "$out" >&2; die "${m}: flashtool status failed"; }
     else
-        out="$(flashtool -d "$dev" -s 2>&1)" || { echo "$out" >&2; die "${m}: flashtool status failed"; }
+        out="$(flashtool -d "$dev" -s 2>&1 | tr -d '\0')" || { echo "$out" >&2; die "${m}: flashtool status failed"; }
     fi
     echo "$out"
     echo "$out" | grep -Eqi "Application Start: 0x0*${OFFSET[$m]#0x}([^0-9a-f]|$)" \
@@ -345,5 +346,6 @@ case "$sub" in
     setup) cmd_setup "$@" ;;
     sudoers) cmd_sudoers ;;
     status) cmd_status ;;
+    helixscreen-restart) systemctl restart helixscreen ;;
     *) sed -n '2,15p' "$0"; exit 2 ;;
 esac

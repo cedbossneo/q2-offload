@@ -50,6 +50,17 @@ printer_push() {
     fi
 }
 
+# SSH key, current scripts on the printer, then the sudo rule for q2-printer.sh: the
+# printer's sudo password is asked once here, every later step runs without it.
+printer_prepare() {
+    printer_ssh_key
+    printer_push
+    if ! pssh "sudo -n /bin/bash ${PRINTER_WORK}/q2-printer.sh status" >/dev/null 2>&1; then
+        info "Allowing ${PRINTER_USER} to run q2-printer.sh as root (printer sudo password, asked once)"
+        proot sudoers
+    fi
+}
+
 # First conversion only: fetch and verify the pinned Katapult deployers, copy them over.
 printer_fetch_deployers() {
     local tmp
@@ -106,6 +117,7 @@ printer_helixscreen() {
     local settings="/home/${PRINTER_USER}/helixscreen/config/settings.json"
     if ! pssh "test -f ${settings}"; then
         confirm "Install HelixScreen on the printer touchscreen (stock Qidi UI needs a local Klipper)?" y || return 0
+        info "Installing HelixScreen on the printer: download and setup take a few minutes; its installer may ask for the printer sudo password"
         pssh -t "curl -sSL https://releases.helixscreen.org/install.sh | sh" \
             || { warn "HelixScreen install failed; run it later on the printer"; return 0; }
         pssh "test -f ${settings}" || {
@@ -121,8 +133,7 @@ for p in (printers.values() if printers else [data]):
     p['moonraker_port'] = 7125
 json.dump(data, open(path, 'w'), indent=2)
 EOF
-    proot_cmd systemctl restart helixscreen || true
+    proot helixscreen-restart || true
     ok "HelixScreen -> Moonraker ${HOST_IP}:7125"
 }
 
-proot_cmd() { ssh -t "${SSH_OPTS[@]}" "${PRINTER_USER}@${PRINTER_IP}" sudo "$@"; }
