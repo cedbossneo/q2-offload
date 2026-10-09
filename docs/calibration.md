@@ -1,8 +1,22 @@
 # Calibration after the install
 
-The configuration ships with stock Qidi values. These steps adapt it to your machine; run
-them from Mainsail/Fluidd once Klipper reports **ready**, in this order. Each `SAVE_CONFIG`
-writes the result at the bottom of `printer.cfg` and restarts Klipper.
+The install leaves a printer that prints, using standard Q2 values:
+
+| Value | Default | Where |
+|---|---|---|
+| Hotend, bed, chamber PID | Qidi stock | `printer.cfg` |
+| Input shaper | Qidi stock (X 3hump_ei 68.8 Hz, Y mzv 42.2 Hz) | `printer.cfg` |
+| Load cell scale | 206.4 counts/g, measured on a Q2 | `printer.cfg` |
+| Load cell zero (`reference_tare_counts`) | measured by the installer, nozzle free | `printer.cfg` |
+| Box gear rotation distance | 13.8 mm (Qidi factory) | Happy Hare overrides |
+| Bowden length | 763.2 mm (stock Box tube) | `saved_variables.cfg` |
+
+At the end of the install it offers the PID and input shaper calibrations (about 15
+minutes, next to the printer). The others are worth doing by hand: your printer's own
+values are safer than standard ones. Run them from Mainsail/Fluidd once Klipper reports
+**ready**, in this order. Each `SAVE_CONFIG` writes the result at the bottom of
+`printer.cfg`, comments out the standard value it replaces, and restarts Klipper. A
+standard value you uncomment again in `printer.cfg` wins over the calibrated one.
 
 ## 1. Load cell (Z probe)
 

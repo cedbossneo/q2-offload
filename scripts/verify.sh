@@ -19,6 +19,7 @@ moonraker_json() { curl -sf -m 5 "localhost:7125$1"; }
 klipper_ready() { moonraker_json /printer/info | grep -q '"state": *"ready"'; }
 moonraker_sees_klipper() { moonraker_json /server/info | grep -q '"klippy_connected": *true'; }
 moonraker_no_failed_components() { moonraker_json /server/info | grep -q '"failed_components": *\[\]'; }
+load_cell_ready() { moonraker_json '/printer/objects/query?load_cell_probe=is_calibrated' | grep -q '"is_calibrated": *true'; }
 happy_hare_enabled() { moonraker_json '/printer/objects/query?mmu=enabled' | grep -q '"enabled": *true'; }
 spoolman_linked() { moonraker_json /server/spoolman/status | grep -q '"spoolman_connected": *true'; }
 http_ok() { curl -sf -m 5 -o /dev/null "$1"; }
@@ -41,6 +42,7 @@ verify_install() {
     check "Klipper ready (mainboard, toolhead and Box connected)" klipper_ready
     check "Moonraker connected to Klipper" moonraker_sees_klipper
     check "Moonraker components loaded" moonraker_no_failed_components
+    check "load cell ready for probing" load_cell_ready
     check "Happy Hare enabled" happy_hare_enabled
     has fluidd && check "Fluidd http://${HOST_IP}:${FLUIDD_PORT}/" http_ok "http://localhost:${FLUIDD_PORT}/"
     has mainsail && check "Mainsail http://${HOST_IP}:${MAINSAIL_PORT}/" http_ok "http://localhost:${MAINSAIL_PORT}/"

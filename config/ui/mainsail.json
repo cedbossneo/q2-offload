@@ -1,0 +1,67 @@
+{
+  "general": {
+    "printername": "Qidi Q2"
+  },
+  "dashboard": {
+    "nonExpandPanels": {
+      "desktop": [
+        "macros-panel"
+      ]
+    },
+    "desktopLayout1": [
+      {
+        "name": "mmu",
+        "visible": true
+      },
+      {
+        "name": "toolhead-control",
+        "visible": true
+      },
+      {
+        "name": "extruder-control",
+        "visible": true
+      },
+      {
+        "name": "macros",
+        "visible": false
+      },
+      {
+        "name": "machine-settings",
+        "visible": true
+      },
+      {
+        "name": "miscellaneous",
+        "visible": true
+      },
+      {
+        "name": "spoolman",
+        "visible": false
+      }
+    ],
+    "desktopLayout2": [
+      {
+        "name": "webcam",
+        "visible": true
+      },
+      {
+        "name": "temperature",
+        "visible": true
+      },
+      {
+        "name": "miniconsole",
+        "visible": true
+      }
+    ]
+  },
+  "uiSettings": {
+    "logo": "#D41216",
+    "primary": "#2196f3",
+    "theme": "mainsail",
+    "displayCancelPrint": true
+  },
+  "control": {
+    "extruder": {
+      "feedamount": 50
+    }
+  }
+}

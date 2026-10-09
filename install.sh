@@ -44,6 +44,7 @@ fi
 . "${Q2_ROOT}/scripts/host.sh"
 . "${Q2_ROOT}/scripts/remote.sh"
 . "${Q2_ROOT}/scripts/verify.sh"
+. "${Q2_ROOT}/scripts/calibrate.sh"
 
 ALL_COMPONENTS=mainsail,fluidd,spoolman,autopa,printguard
 SETTINGS="${STATE_DIR}/settings.env"
@@ -167,7 +168,12 @@ EOF
     printer_proxies
     host_start
     wait_ready || true
+    host_ui_defaults
     printer_helixscreen
+    if klipper_ready; then
+        calibrate_load_cell_tare || true
+        calibrate_offer
+    fi
     local healthy=0
     verify_install || healthy=1
     final_notes "$healthy"

@@ -4,6 +4,8 @@
 
 DATA="${HOME}/printer_data"
 CFG="${DATA}/config"
+# Stock Qidi Box tube, Box shared exit sensor to the toolhead (mm, measured on a Q2)
+BOX_BOWDEN_LENGTH=763.2
 STATE_DIR="${HOME}/.config/q2-offload"
 MANIFEST="${STATE_DIR}/installed-files.sha256"
 KLIPPY_ENV="${HOME}/klippy-env"
@@ -250,7 +252,11 @@ host_config() {
         chmod +x "${DATA}/scripts/plr/$(basename "$f")"
     done
     # Single variables file shared by the Qidi macros and Happy Hare (which checks mmu__revision)
-    [ -e "${CFG}/saved_variables.cfg" ] || printf '[Variables]\nmmu__revision = 0\n' > "${CFG}/saved_variables.cfg"
+    # Bowden length of the stock Box-to-toolhead tube, so loading works before MMU_CALIBRATE_BOWDEN
+    [ -e "${CFG}/saved_variables.cfg" ] || printf '%s\n' '[Variables]' 'mmu__revision = 0' \
+        "mmu_unit0_bowden_home = 'mmu_shared_exit'" \
+        "mmu_unit0_bowden_lengths = [${BOX_BOWDEN_LENGTH}, ${BOX_BOWDEN_LENGTH}, ${BOX_BOWDEN_LENGTH}, ${BOX_BOWDEN_LENGTH}]" \
+        > "${CFG}/saved_variables.cfg"
     if has mainsail; then
         mkdir -p "${CFG}/.theme"
         python3 "${Q2_ROOT}/scripts/navi.py" "$COMPONENTS" "$HOST_IP" "$FLUIDD_PORT" > "$tmp"
@@ -432,4 +438,31 @@ host_install_all() {
     host_spoolman
     host_printguard
     host_services
+}
+
+# Default title and dashboard layout of Mainsail and Fluidd (config/ui/<client>.json), stored
+# in Moonraker's database where the clients keep their settings. Only keys the user has not
+# set yet are written, so later changes made in the UI are kept.
+host_ui_defaults() {
+    in_ci && return 0
+    local client
+    for client in mainsail fluidd; do
+        has "$client" || continue
+        python3 - "${Q2_ROOT}/config/ui/${client}.json" "$client" <<'PY' || warn "${client}: default layout not applied"
+import json, sys, urllib.error, urllib.request
+path, ns = sys.argv[1], sys.argv[2]
+base = "http://localhost:7125/server/database/item"
+for key, value in json.load(open(path)).items():
+    try:
+        urllib.request.urlopen("%s?namespace=%s&key=%s" % (base, ns, key), timeout=5)
+        continue  # already set by the user
+    except urllib.error.HTTPError as e:
+        if e.code != 404:
+            raise
+    body = json.dumps({"namespace": ns, "key": key, "value": value}).encode()
+    req = urllib.request.Request(base, data=body, headers={"Content-Type": "application/json"})
+    urllib.request.urlopen(req, timeout=5)
+PY
+    done
+    ok "Mainsail/Fluidd: title Qidi Q2 and dashboard layout (where not set yet)"
 }
