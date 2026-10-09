@@ -6,8 +6,10 @@ import pathlib
 
 import jinja2
 
-CFG = pathlib.Path(__file__).resolve().parents[2] / "config/klipper/mmu_keep_dry.cfg"
-MAX_TEMP = 55.0
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+CFG = ROOT / "config/klipper/mmu_keep_dry.cfg"
+OVERRIDES = ROOT / "config/happy-hare/overrides.cfg"
+MAX_TEMP = 65.0
 
 
 def load():
@@ -60,8 +62,10 @@ def test_slicer_material_of_used_tool_counts():
 
 
 def test_capped_by_heater_max_temp():
-    assert heater_cmd(render(HEAT, ["PA-CF", None, None, None])) == ["MMU_HEATER TEMP=55.0"]
-    assert heater_cmd(render(HEAT, ["PA-CF", None, None, None], settings={})) == ["MMU_HEATER TEMP=55.0"]
+    assert heater_cmd(render(HEAT, ["PA-CF", None, None, None])) == ["MMU_HEATER TEMP=65"]
+    low_cap = {"mmu_unit_parameters unit0": {"heater_max_temp": 55.0}}
+    assert heater_cmd(render(HEAT, ["PA-CF", None, None, None], settings=low_cap)) == ["MMU_HEATER TEMP=55.0"]
+    assert heater_cmd(render(HEAT, ["PA-CF", None, None, None], settings={})) == ["MMU_HEATER TEMP=65"]
 
 
 def test_variant_falls_back_to_base_material():
@@ -82,6 +86,24 @@ def test_running_drying_cycle_is_left_alone():
 def test_disable_stops_only_print_heating():
     assert heater_cmd(render(OFF, ["ABS", None, None, None], active=True)) == ["MMU_HEATER STOP=1"]
     assert render(OFF, ["ABS", None, None, None], active=False) == []
+
+
+def drying_data():
+    """drying_data from overrides.cfg, read the way Happy Hare reads it."""
+    text = OVERRIDES.read_text()
+    start = text.index("drying_data:") + len("drying_data:")
+    end = text.index("}", start) + 1
+    return {k.upper(): v for k, v in ast.literal_eval(text[start:end].strip()).items()}
+
+
+def test_print_table_matches_drying_table():
+    assert set(VARIABLES["print_temps"]) == set(drying_data())
+
+
+def test_print_heat_never_above_drying_temp():
+    dry = drying_data()
+    for material, temp in VARIABLES["print_temps"].items():
+        assert temp <= dry[material][0], material
 
 
 if __name__ == "__main__":

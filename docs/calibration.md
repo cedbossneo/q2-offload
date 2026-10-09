@@ -71,13 +71,19 @@ NFC: write your spool tags in the OpenSpool format ([docs/spoolman-nfc.md](spool
 
 ## 7. Box drying
 
-Drying is limited to 55 °C (PETG spool adapters soften above). `MMU_KEEP_DRY` restarts a
-drying cycle when the Box humidity goes above 35 % (`MMU_KEEP_DRY TRIGGER=40 TARGET=25`
-to change, `MMU_KEEP_DRY ENABLE=0` to stop).
+Each material has two Box temperatures, with the same materials in both tables:
 
-While printing, the Box heats like the stock firmware: `PRINT_START` sets the Box to the
-temperature of the materials in use (PLA, PC and TPU 0 = off, PETG and ASA 45 °C, ABS 55 °C,
-table in `_BOX_PRINT_HEAT`, `mmu_keep_dry.cfg`). With several materials loaded the lowest
-one wins. `DISABLE_BOX_HEATER` (slicer end G-code, `PRINT_END`, cancel) turns it off but
-lets a running drying cycle finish. `SET_GCODE_VARIABLE MACRO=_BOX_PRINT_HEAT VARIABLE=enable
-VALUE=False` disables it.
+- **drying** (`drying_data` in `config/happy-hare/overrides.cfg`): used by `MMU_HEATER DRY=1`
+  and by `MMU_KEEP_DRY`, which restarts a drying cycle when the Box humidity goes above 35 %
+  (`MMU_KEEP_DRY TRIGGER=40 TARGET=25` to change, `MMU_KEEP_DRY ENABLE=0` to stop);
+- **printing** (`print_temps` in `_BOX_PRINT_HEAT`, `mmu_keep_dry.cfg`): the stock Qidi
+  values. `PRINT_START` heats the Box to it (PLA, PC and TPU 0 = off;
+  PETG and ASA 45 °C, ABS 55 °C, PA/PAHT/PPS/PET-CF 65 °C).
+  `DISABLE_BOX_HEATER` (slicer end G-code, `PRINT_END`, cancel) turns it off but lets a
+  running drying cycle finish. `SET_GCODE_VARIABLE MACRO=_BOX_PRINT_HEAT VARIABLE=enable
+  VALUE=False` disables it.
+
+In both cases the lowest temperature of the loaded materials wins, so a PLA spool next to a
+PETG one never softens, and the Box never goes above 65 °C (`heater_max_temp`). Spool
+adapters printed in PETG soften above about 60 °C: print them in ABS, ASA or PC if you dry
+ASA/ABS or print PA-type filaments.

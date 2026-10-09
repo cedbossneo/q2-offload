@@ -3,10 +3,11 @@
 
 Usage: apply-overrides.py <overrides.cfg> <mmu-base-dir> [--home DIR]
 
-Idempotent: options are set in place (continuation lines included), missing options are
-appended at the end of their section, '!key' removes an option and '!section' removes the
-whole section. Fails if a targeted file or section does not exist, so a Happy Hare change
-that renames something is caught (in CI) instead of silently ignored.
+Idempotent: options are set in place (continuation lines included; an override value may
+itself continue on indented lines), missing options are appended at the end of their section,
+'!key' removes an option and '!section' removes the whole section. Fails if a targeted file
+or section does not exist, so a Happy Hare change that renames something is caught (in CI)
+instead of silently ignored.
 """
 import argparse
 import os
@@ -24,6 +25,11 @@ def parse_overrides(path, home):
         for raw in f:
             line = raw.rstrip('\n')
             if not line.strip() or line.lstrip().startswith('#'):
+                continue
+            if line[:1] in (' ', '\t') and blocks and blocks[-1][2] and blocks[-1][2][-1][0] == 'set':
+                # Indented continuation of a multi-line value (e.g. drying_data)
+                op, key, value = blocks[-1][2].pop()
+                blocks[-1][2].append((op, key, value + '\n    ' + line.strip()))
                 continue
             m = TARGET.match(line)
             if m:
