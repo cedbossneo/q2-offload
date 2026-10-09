@@ -40,7 +40,7 @@ KIAUH_REF=d3e538de7b3163abe27fdf8116a60716d4db31ce
 MAINSAIL_VERSION=v2.19.0
 FLUIDD_VERSION=v1.37.6
 SPOOLMAN_VERSION=v0.27.0
-PRINTGUARD_VERSION=v2.5.0
+PRINTGUARD_VERSION=v2.6.1
 
 # First-time Katapult install without an ST-Link (n3oney/qidi-q2-klipper deployers,
 # flashed through Qidi's own update scripts). Pinned on purpose: never auto-bumped.
