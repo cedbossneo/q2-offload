@@ -12,7 +12,9 @@ The install leaves a printer that prints, using standard Q2 values:
 | Bowden length | 763.2 mm (stock Box tube) | `saved_variables.cfg` |
 
 At the end of the install it offers the PID and input shaper calibrations (about 15
-minutes, next to the printer). The others are worth doing by hand: your printer's own
+minutes, next to the printer). Before anything homes Z, it asks you to push the nozzle up a
+few times: the load cell is the Z endstop, and the printer is only homed if it sees the taps
+(positive force above 150 g) and comes back to zero. The others are worth doing by hand: your printer's own
 values are safer than standard ones. Run them from Mainsail/Fluidd once Klipper reports
 **ready**, in this order. Each `SAVE_CONFIG` writes the result at the bottom of
 `printer.cfg`, comments out the standard value it replaces, and restarts Klipper. A

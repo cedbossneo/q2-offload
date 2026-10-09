@@ -59,8 +59,67 @@ open(path, 'w').write(body[:m.start(1)] + section + body[m.end(1):] + sep + auto
 EOF
     restart_klipper || return 1
     [ "$(status_field load_cell_probe is_calibrated)" = True ] \
-        && ok "load cell zero: ${tare} counts" \
         || { warn "load cell still not calibrated: run LOAD_CELL_CALIBRATE"; return 1; }
+    ok "load cell zero: ${tare} counts"
+    load_cell_tap_test
+}
+
+# Before anything that homes Z: the user taps the nozzle and the load cell must see it, in
+# the right direction, and come back to zero. A dead, inverted or stuck load cell would let
+# the nozzle drive into the bed.
+LOAD_CELL_TESTED=0
+LOAD_CELL_TAP_G=150      # well above trigger_force (75 g)
+LOAD_CELL_REST_G=40      # back to rest after the taps
+LOAD_CELL_TAP_SECONDS=20
+
+load_cell_tap_test() {
+    [ "$LOAD_CELL_TESTED" = 1 ] && return 0
+    [ "$(status_field load_cell_probe is_calibrated)" = True ] || {
+        warn "load cell not calibrated: no homing"; return 1; }
+    cat <<EOF
+
+${C_WARN}Load cell check${C_OFF} (it is the Z endstop: if it does not react, the nozzle drives into the bed)
+When asked, push the nozzle UP gently with a finger, a few times, for ${LOAD_CELL_TAP_SECONDS} seconds.
+EOF
+    confirm "Ready?" y || return 1
+    gcode "LOAD_CELL_TARE" || return 1
+    sleep 1
+    info "Tap the nozzle now (${LOAD_CELL_TAP_SECONDS} s)"
+    local result
+    result="$(python3 - "$LOAD_CELL_TAP_SECONDS" "$LOAD_CELL_TAP_G" "$LOAD_CELL_REST_G" <<'PY'
+import json, sys, time, urllib.request
+seconds, tap_g, rest_g = float(sys.argv[1]), float(sys.argv[2]), float(sys.argv[3])
+url = "http://localhost:7125/printer/objects/query?load_cell_probe=force_g,max_force_g,min_force_g,errors,overflows"
+def read():
+    return json.load(urllib.request.urlopen(url, timeout=2))["result"]["status"]["load_cell_probe"]
+high = low = 0.0
+end = time.time() + seconds
+while time.time() < end:
+    s = read()
+    high, low = max(high, s.get("max_force_g", 0)), min(low, s.get("min_force_g", 0))
+    time.sleep(0.2)
+time.sleep(1.5)
+s = read()
+if s.get("errors") or s.get("overflows"):
+    print("sensor errors: %s errors, %s overflows" % (s.get("errors"), s.get("overflows")))
+elif high < tap_g and low <= -tap_g:
+    print("force goes NEGATIVE when the nozzle is pushed up (%.0f g): set sensor_orientation: inverted" % low)
+elif high < tap_g:
+    print("no tap seen (max %.0f g, %.0f g needed): check the THR cable and the load cell" % (high, tap_g))
+elif abs(s.get("force_g", 0)) > rest_g:
+    print("does not come back to zero after the taps (%.0f g)" % s.get("force_g", 0))
+else:
+    print("OK %.0f" % high)
+PY
+)" || result="could not read the load cell"
+    if [ "${result%% *}" = OK ]; then
+        ok "load cell reacts (${result#OK } g) and returns to zero"
+        LOAD_CELL_TESTED=1
+        return 0
+    fi
+    warn "load cell check failed: ${result}"
+    warn "nothing will home the printer; fix it, then run the calibrations from docs/calibration.md"
+    return 1
 }
 
 calibrate_offer() {
@@ -83,7 +142,9 @@ EOF
         gcode "TURN_OFF_HEATERS" || true
     fi
     if confirm "Input shaper: home the printer and shake the toolhead, about 5 minutes (bed must be empty)?" y; then
-        gcode "G28" && gcode "SHAPER_CALIBRATE" && saved=1
+        if load_cell_tap_test; then
+            gcode "G28" && gcode "SHAPER_CALIBRATE" && saved=1
+        fi
     fi
     if [ "$saved" = 1 ]; then
         info "Saving the results (SAVE_CONFIG restarts Klipper)"
