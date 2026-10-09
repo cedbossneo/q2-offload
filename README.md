@@ -50,8 +50,9 @@ cd ~/q2-offload
 ./install.sh --printer 192.168.1.50
 ```
 
-The installer asks before each step that touches the printer, and makes a backup of
-the printer config first. It:
+It first shows a menu of the optional components (Mainsail, Fluidd, Spoolman, autopa,
+PrintGuard; all selected by default, `--components` skips it). The installer asks before
+each step that touches the printer, and makes a backup of the printer config first. It:
 
 1. installs Klipper, Moonraker, Happy Hare and the components on the host
    (`--components mainsail,fluidd,spoolman,autopa,printguard`, all by default);

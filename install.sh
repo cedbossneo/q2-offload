@@ -92,13 +92,53 @@ COMPONENTS=${COMPONENTS}
 EOF
 }
 
+# Component menu, shown on an interactive install unless --components was given. Starts
+# from the previous selection (settings.env) or from everything.
+COMPONENT_HELP=(
+    "mainsail|Mainsail web interface (port ${MAINSAIL_PORT})"
+    "fluidd|Fluidd web interface (port ${FLUIDD_PORT})"
+    "spoolman|Spoolman spool inventory, filled by the Box NFC tags (Docker, port 7912)"
+    "autopa|autopa: pressure advance calibration with the printer camera"
+    "printguard|PrintGuard: print failure detection on the camera (Docker, about 1 CPU core)"
+)
+
+choose_components() {
+    local sel=",${COMPONENTS-$ALL_COMPONENTS}," i entry name reply n
+    while true; do
+        printf '\n%sComponents to install%s (Klipper, Moonraker and Happy Hare are always installed)\n' "${C_INFO}" "${C_OFF}"
+        i=1
+        for entry in "${COMPONENT_HELP[@]}"; do
+            name="${entry%%|*}"
+            printf '  %d) [%s] %s\n' "$i" "$([[ "$sel" == *",${name},"* ]] && echo x || echo ' ')" "${entry#*|}"
+            i=$((i + 1))
+        done
+        read -r -p "Numbers to toggle (e.g. 2 5), Enter to continue: " reply
+        [ -z "$reply" ] && break
+        for n in $reply; do
+            [[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -ge 1 ] && [ "$n" -le "${#COMPONENT_HELP[@]}" ] \
+                || { warn "ignored '${n}'"; continue; }
+            name="${COMPONENT_HELP[$((n - 1))]%%|*}"
+            if [[ "$sel" == *",${name},"* ]]; then sel="${sel/,${name},/,}"; else sel="${sel}${name},"; fi
+        done
+    done
+    # Keep the canonical order
+    COMPONENTS=""
+    for name in ${ALL_COMPONENTS//,/ }; do
+        [[ "$sel" == *",${name},"* ]] && COMPONENTS="${COMPONENTS:+${COMPONENTS},}${name}"
+    done
+}
+
 preflight() {
     if [ "$UNATTENDED" != 1 ]; then
         [ "$(id -u)" != 0 ] || die "run as your normal user (sudo is used where needed), not as root"
         in_ci || sudo -v || die "sudo is required"
     fi
     command -v apt-get >/dev/null || die "only Debian/Ubuntu hosts are supported"
-    COMPONENTS="${COMPONENTS:-$ALL_COMPONENTS}"
+    if [ "$command" = install ] && [ -z "$cli_components" ] && [ "${ASSUME_YES:-0}" != 1 ] \
+        && [ -t 0 ] && ! in_ci; then
+        choose_components
+    fi
+    COMPONENTS="${COMPONENTS-$ALL_COMPONENTS}"
     local c
     for c in ${COMPONENTS//,/ }; do
         [[ ",${ALL_COMPONENTS}," == *",${c},"* ]] || die "unknown component '${c}' (valid: ${ALL_COMPONENTS})"
