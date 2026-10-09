@@ -61,7 +61,17 @@ jobs:
           name: firmware
           path: dist
       - name: Simulated flash
-        run: docker run --rm -v "$PWD:/repo:ro" public.ecr.aws/docker/library/debian:bookworm bash /repo/tests/flash-sim/run.sh /repo /repo/dist
+        run: |
+          # Both registries rate-limit anonymous pulls from shared runners: retry, alternating
+          img=""
+          for i in 1 2 3 4 5 6; do
+            for c in public.ecr.aws/docker/library/debian:bookworm debian:bookworm; do
+              docker pull -q "$c" >/dev/null 2>&1 && { img="$c"; break 2; }
+            done
+            sleep $((i * 15))
+          done
+          [ -n "$img" ] || { echo "could not pull debian:bookworm"; exit 1; }
+          docker run --rm -v "$PWD:/repo:ro" "$img" bash /repo/tests/flash-sim/run.sh /repo /repo/dist
 
   host:
     needs: firmware
