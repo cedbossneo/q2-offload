@@ -34,12 +34,31 @@ die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 [ "$(id -u)" = 0 ] || die "run as root (sudo)"
 mkdir -p "$WORK"
 
+# Stock Qidi OS is Debian 11 with stale (or no) package lists, and bullseye is being moved
+# to archive.debian.org. Refresh the lists; if a package is still missing, switch the
+# sources to the archive (old list kept as sources.list.q2-offload.bak) and retry.
+apt_install() {
+    apt-get update -qq >/dev/null 2>&1 || true
+    apt-get install -y -qq "$@" >/dev/null 2>&1 && return 0
+    info "Debian mirror lacks $*; switching apt to archive.debian.org"
+    [ -f /etc/apt/sources.list.q2-offload.bak ] || cp /etc/apt/sources.list /etc/apt/sources.list.q2-offload.bak
+    cat > /etc/apt/sources.list <<'SRC'
+deb http://archive.debian.org/debian bullseye main contrib
+deb http://archive.debian.org/debian bullseye-updates main contrib
+deb http://archive.debian.org/debian bullseye-backports main contrib
+deb http://archive.debian.org/debian-security bullseye-security main contrib
+SRC
+    echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99-q2-offload-archive
+    apt-get update -qq >/dev/null || die "apt-get update failed (no internet on the printer?)"
+    apt-get install -y -qq "$@" >/dev/null || die "cannot install $*"
+}
+
 python_bin() {
     # Klipper's venv on the stock image has pyserial; fall back to python3 + python3-serial
     if [ -x "${USER_HOME}/klippy-env/bin/python" ]; then
         echo "${USER_HOME}/klippy-env/bin/python"
     else
-        python3 -c 'import serial' 2>/dev/null || apt-get install -y -qq python3-serial >/dev/null
+        python3 -c 'import serial' 2>/dev/null || apt_install python3-serial
         echo python3
     fi
 }
@@ -100,7 +119,7 @@ cmd_detect() {
 
 cmd_proxy_install() {
     local host="${1:?klipper host ip}" main box
-    command -v socat >/dev/null || { info "installing socat"; apt-get install -y -qq socat >/dev/null; }
+    command -v socat >/dev/null || { info "installing socat"; apt_install socat; }
     main="$(klipper_device main)"; box="$(klipper_device box)"
     [ -n "$main" ] || die "mainboard not found as usb-Klipper_${MCU_TYPE[main]} (flash it first)"
     [ -n "$box" ] || die "Qidi Box not found as usb-Klipper_${MCU_TYPE[box]} (flash it first)"
