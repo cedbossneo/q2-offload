@@ -338,7 +338,8 @@ host_spoolman() {
     in_ci && return 0
     mkdir -p "${HOME}/spoolman-data"
     # The image runs as uid 1000 unless told otherwise: the data dir belongs to this user
-    local want="ghcr.io/donkie/spoolman:${SPOOLMAN_VERSION#v} PUID=$(id -u)"
+    local want
+    want="ghcr.io/donkie/spoolman:${SPOOLMAN_VERSION#v} PUID=$(id -u)"
     if sudo docker inspect spoolman >/dev/null 2>&1; then
         [ "$(sudo docker inspect -f '{{.Config.Image}} {{range .Config.Env}}{{if eq (index (split . "=") 0) "PUID"}}{{.}}{{end}}{{end}}' spoolman)" = "$want" ] \
             && { ok "Spoolman ${SPOOLMAN_VERSION}"; return 0; }
