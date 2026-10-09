@@ -36,7 +36,7 @@ echo "$info_json" | python3 -c '
 import json, sys
 r = json.load(sys.stdin)["result"]
 print("components:", ", ".join(sorted(r["components"])))
-bad = [w for w in r.get("warnings", []) if not any(k in w.lower() for k in ("klippy", "dbus"))]
+bad = [w for w in r.get("warnings", []) if not any(k in w.lower() for k in ("klippy", "dbus", "polkit", "policykit"))]  # host-permission warnings: not config
 failed = r.get("failed_components", [])
 for w in bad: print("WARNING:", w)
 if failed: print("FAILED:", failed)

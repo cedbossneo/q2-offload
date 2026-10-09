@@ -1,6 +1,6 @@
 #!/bin/bash 
 # Stock Qidi power-loss-recovery script, paths adapted by q2-offload
-# shellcheck disable=SC2004,SC2034
+# shellcheck disable=SC2002,SC2004,SC2034
  
 CONFIG_FILE="@HOME@/printer_data/config/saved_variables.cfg" 
 
