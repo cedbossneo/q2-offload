@@ -85,5 +85,5 @@ Each material has two Box temperatures, with the same materials in both tables:
 
 In both cases the lowest temperature of the loaded materials wins, so a PLA spool next to a
 PETG one never softens, and the Box never goes above 65 °C (`heater_max_temp`). Spool
-adapters printed in PETG soften above about 60 °C: print them in ABS, ASA or PC if you dry
-ASA/ABS or print PA-type filaments.
+holders and adapters printed in PETG soften above about 60 °C, and cardboard spools need a
+holder: print them in ABS, ASA or PC before drying ASA/ABS or printing PA-type filaments.
