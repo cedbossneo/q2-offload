@@ -27,6 +27,8 @@ jobs:
         run: shellcheck -x -S warning install.sh scripts/*.sh printer/q2-printer.sh config/plr/*.sh tests/*/*.sh
       - name: python
         run: python3 -m py_compile scripts/*.py
+      - name: macros
+        run: sudo apt-get install -y -qq python3-jinja2 >/dev/null && python3 tests/macros/test_box_heat.py
 
   firmware:
     runs-on: ubuntu-24.04

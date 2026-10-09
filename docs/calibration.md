@@ -74,3 +74,10 @@ NFC: write your spool tags in the OpenSpool format ([docs/spoolman-nfc.md](spool
 Drying is limited to 55 °C (PETG spool adapters soften above). `MMU_KEEP_DRY` restarts a
 drying cycle when the Box humidity goes above 35 % (`MMU_KEEP_DRY TRIGGER=40 TARGET=25`
 to change, `MMU_KEEP_DRY ENABLE=0` to stop).
+
+While printing, the Box heats like the stock firmware: `PRINT_START` sets the Box to the
+temperature of the materials in use (PLA, PC and TPU 0 = off, PETG and ASA 45 °C, ABS 55 °C,
+table in `_BOX_PRINT_HEAT`, `mmu_keep_dry.cfg`). With several materials loaded the lowest
+one wins. `DISABLE_BOX_HEATER` (slicer end G-code, `PRINT_END`, cancel) turns it off but
+lets a running drying cycle finish. `SET_GCODE_VARIABLE MACRO=_BOX_PRINT_HEAT VARIABLE=enable
+VALUE=False` disables it.
