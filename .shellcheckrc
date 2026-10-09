@@ -1,0 +1,4 @@
+# Sourced files are resolved at runtime from the repo root
+disable=SC1091
+# ssh commands are built on the host on purpose
+disable=SC2029

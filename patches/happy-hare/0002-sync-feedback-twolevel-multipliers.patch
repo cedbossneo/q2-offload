@@ -1,0 +1,102 @@
+From dd63854a737971ca681ec2d616b299d2025ea75c Mon Sep 17 00:00:00 2001
+From: cedbossneo <hauber.c@gmail.com>
+Date: Fri, 9 Oct 2026 09:16:32 +0200
+Subject: [PATCH] fix(sync_feedback): pass the twolevel speed/boost multipliers
+ to the controller
+
+sync_feedback_speed_multiplier and sync_feedback_boost_multiplier were never
+copied into SyncControllerConfig, so the twolevel controller always ran at
+its built-in 5%/5%. Pass them in when building the controller and push live
+MMU_TEST_CONFIG changes to a running controller, recomputing rd low/high
+around the current reference.
+
+Fixes #1369
+
+Claude-Session: https://claude.ai/code/session_01Ps7yQKNqsbUeCYzztPZT5q
+---
+ extras/mmu/unit/mmu_sync_controller.py |  9 +++++++++
+ extras/mmu/unit/mmu_sync_feedback.py   | 13 +++++++++++++
+ extras/mmu/unit/mmu_unit_parameters.py |  9 +++++++--
+ 3 files changed, 29 insertions(+), 2 deletions(-)
+
+diff --git a/extras/mmu/unit/mmu_sync_controller.py b/extras/mmu/unit/mmu_sync_controller.py
+index e0f76f36..a85f1752 100644
+--- a/extras/mmu/unit/mmu_sync_controller.py
++++ b/extras/mmu/unit/mmu_sync_controller.py
+@@ -1304,6 +1304,15 @@ class SyncController:
+         self.rd_high = rd / (1.0 - f)
+ 
+ 
++    def apply_twolevel_tuning(self):
++        """
++        Recompute the twolevel low/high rd around the current reference after a
++        live change of rd_twolevel_speed_multiplier/rd_twolevel_boost_multiplier
++        """
++        if self.twolevel_active:
++            self._set_low_high_rd(self.rd_ref)
++
++
+     def _clamp_to_envelope(self, rd):
+         """
+         Never allow rd outside of limits
+diff --git a/extras/mmu/unit/mmu_sync_feedback.py b/extras/mmu/unit/mmu_sync_feedback.py
+index a017e77f..161d6ee2 100644
+--- a/extras/mmu/unit/mmu_sync_feedback.py
++++ b/extras/mmu/unit/mmu_sync_feedback.py
+@@ -760,6 +760,8 @@ class MmuSyncFeedback:
+             sensor_type = self._get_sensor_type(),
+             use_twolevel_for_type_p = self.p.sync_feedback_force_twolevel,
+             rd_start = rd_start,
++            rd_twolevel_speed_multiplier = self.p.sync_feedback_speed_multiplier / 100.,
++            rd_twolevel_boost_multiplier = self.p.sync_feedback_boost_multiplier / 100.,
+             flowguard_relief_mm = self.p.flowguard_max_relief,
+         )
+         # EKF "extreme" threshold tracks the analog sensor trigger point (type-P only)
+@@ -778,6 +780,17 @@ class MmuSyncFeedback:
+         self.ctrl.cfg.flowguard_relief_mm = self.p.flowguard_max_relief
+ 
+ 
++    def apply_twolevel_tuning(self):
++        """
++        Push live twolevel speed/boost multipliers to a running controller so
++        MMU_TEST_CONFIG changes take effect immediately without a controller reset.
++        """
++        if not self.mmu_unit.has_buffer() or self.ctrl is None: return
++        self.ctrl.cfg.rd_twolevel_speed_multiplier = self.p.sync_feedback_speed_multiplier / 100.
++        self.ctrl.cfg.rd_twolevel_boost_multiplier = self.p.sync_feedback_boost_multiplier / 100.
++        self.ctrl.apply_twolevel_tuning()
++
++
+     def apply_extrude_threshold(self):
+         """
+         Re-register the extruder movement callback so a changed
+diff --git a/extras/mmu/unit/mmu_unit_parameters.py b/extras/mmu/unit/mmu_unit_parameters.py
+index b00f3cca..bc933e60 100644
+--- a/extras/mmu/unit/mmu_unit_parameters.py
++++ b/extras/mmu/unit/mmu_unit_parameters.py
+@@ -135,6 +135,11 @@ class MmuUnitParameters(TunableParametersBase):
+         if new != old:
+             self._mmu_unit.sync_feedback.apply_flowguard_tuning()
+ 
++    def _on_twolevel_tuning_change(self, old, new):
++        # Push live twolevel speed/boost multipliers to a running controller
++        if new != old:
++            self._mmu_unit.sync_feedback.apply_twolevel_tuning()
++
+     def _on_sync_feedback_extrude_threshold_change(self, old, new):
+         # Apply new extruder sampling threshold immediately if we're active
+         if new != old:
+@@ -408,8 +413,8 @@ class MmuUnitParameters(TunableParametersBase):
+ 
+         # Sync-feedback
+         ParamSpec('sync_feedback_enabled',            'int',       0, section="SYNC FEEDBACK BUFFER", limits=dict(minval=0, maxval=1),    guard=_guard_has_buffer, fmt="%d"),
+-        ParamSpec('sync_feedback_speed_multiplier',   'float',   5.0, section="SYNC FEEDBACK BUFFER", limits=dict(minval=1.0, maxval=50), guard=_guard_has_buffer, fmt="%.1f"),
+-        ParamSpec('sync_feedback_boost_multiplier',   'float',   5.0, section="SYNC FEEDBACK BUFFER", limits=dict(minval=1.0, maxval=50), guard=_guard_has_buffer, fmt="%.1f"),
++        ParamSpec('sync_feedback_speed_multiplier',   'float',   5.0, section="SYNC FEEDBACK BUFFER", limits=dict(minval=1.0, maxval=50), guard=_guard_has_buffer, on_change=_on_twolevel_tuning_change, fmt="%.1f"),
++        ParamSpec('sync_feedback_boost_multiplier',   'float',   5.0, section="SYNC FEEDBACK BUFFER", limits=dict(minval=1.0, maxval=50), guard=_guard_has_buffer, on_change=_on_twolevel_tuning_change, fmt="%.1f"),
+         ParamSpec('sync_feedback_extrude_threshold',  'float',   5.0, section="SYNC FEEDBACK BUFFER", limits=dict(above=1.0),             guard=_guard_has_buffer, on_change=_on_sync_feedback_extrude_threshold_change, fmt="%.1f"),
+         ParamSpec('sync_feedback_debug_log',          'int',       0, section="SYNC FEEDBACK BUFFER", limits=dict(minval=0, maxval=1),    guard=_guard_has_buffer, fmt="%d"),
+         ParamSpec('sync_feedback_force_twolevel',     'int',       0, section="SYNC FEEDBACK BUFFER", limits=dict(minval=0, maxval=1),    guard=_guard_has_buffer, hidden=True),
+-- 
+2.54.0 (Apple Git-157)
+

@@ -1,0 +1,20 @@
+[Unit]
+Description=Klipper 3D Printer Firmware (q2-offload)
+Documentation=https://www.klipper3d.org/
+After=network-online.target q2-serial-bridge@main:7001.service
+Wants=udev.target
+
+[Install]
+WantedBy=multi-user.target
+
+[Service]
+Type=simple
+User=@USER@
+RemainAfterExit=yes
+WorkingDirectory=@HOME@/klipper
+EnvironmentFile=@HOME@/printer_data/systemd/klipper.env
+ExecStart=@HOME@/klippy-env/bin/python $KLIPPER_ARGS
+Restart=always
+RestartSec=10
+# Keep the Klipper path ahead of anything else on the host (PrintGuard, browsers...)
+Nice=-10

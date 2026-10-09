@@ -1,0 +1,69 @@
+name: CI
+
+# Build the three MCU firmwares from the pinned Klipper + patches, install the whole host
+# stack on a clean Ubuntu runner, and check that Klipper accepts the configuration against
+# the firmware dictionaries and that Moonraker starts cleanly.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - name: shellcheck
+        run: shellcheck -x install.sh scripts/*.sh printer/q2-printer.sh config/plr/*.sh
+      - name: python
+        run: python3 -m py_compile scripts/*.py
+
+  firmware:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - name: Toolchain
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq gcc-arm-none-eabi libnewlib-arm-none-eabi
+      - name: Klipper + Q2 patches
+        run: scripts/prepare-klipper.sh "$RUNNER_TEMP/klipper"
+      - name: Build main / thr / box
+        run: scripts/build-firmware.sh "$RUNNER_TEMP/klipper" dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: dist/
+
+  host:
+    needs: firmware
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: firmware
+          path: dist
+      - name: Install the host stack (CI mode)
+        run: ./install.sh host --ci --yes
+      - name: Validate Klipper and Moonraker configuration
+        run: scripts/validate-config.sh dist
+      - name: Re-run the installer (update path must be idempotent)
+        run: ./install.sh host --ci --yes && scripts/validate-config.sh dist
+      - name: Logs
+        if: failure()
+        run: |
+          tail -100 ~/.config/q2-offload/happy-hare-install.log || true
+          ls -la ~/printer_data/config ~/printer_data/config/mmu/base || true

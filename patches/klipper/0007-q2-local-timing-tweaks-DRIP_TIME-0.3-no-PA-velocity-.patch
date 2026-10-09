@@ -1,0 +1,63 @@
+From 84a361872f16a711d7b7ef19bb2db0d9fae9afd2 Mon Sep 17 00:00:00 2001
+From: cedbossneo <hauber.c@gmail.com>
+Date: Wed, 7 Oct 2026 14:30:28 +0200
+Subject: [PATCH 7/7] q2: local timing tweaks (DRIP_TIME 0.3, no PA/velocity
+ rollover logging)
+
+DRIP_TIME 0.100 -> 0.300 (value from n3oney/qidi-q2-klipper 0017) and
+set_rollover_info(log=False) for SET_PRESSURE_ADVANCE and SET_VELOCITY_LIMIT,
+equivalent to the Kalico danger_options we ran with.
+---
+ klippy/extras/motion_queuing.py | 4 +++-
+ klippy/kinematics/extruder.py   | 5 ++++-
+ klippy/toolhead.py              | 3 ++-
+ 3 files changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/klippy/extras/motion_queuing.py b/klippy/extras/motion_queuing.py
+index 07a6d63ed..6cb312864 100644
+--- a/klippy/extras/motion_queuing.py
++++ b/klippy/extras/motion_queuing.py
+@@ -18,7 +18,9 @@ STEPCOMPRESS_FLUSH_TIME = 0.050
+ SDS_CHECK_TIME = 0.001 # step+dir+step filter in stepcompress.c
+ 
+ DRIP_SEGMENT_TIME = 0.050
+-DRIP_TIME = 0.100
++# 0.100 en amont: trop juste sur la Q2, les "Timer too close" frappaient
++# pendant les palpages. Valeur reprise de n3oney/qidi-q2-klipper (0017).
++DRIP_TIME = 0.300
+ 
+ class PrinterMotionQueuing:
+     def __init__(self, config):
+diff --git a/klippy/kinematics/extruder.py b/klippy/kinematics/extruder.py
+index 684f4be71..06fd0520d 100644
+--- a/klippy/kinematics/extruder.py
++++ b/klippy/kinematics/extruder.py
+@@ -105,7 +105,10 @@ class ExtruderStepper:
+         msg = ("pressure_advance: %.6f\n"
+                "pressure_advance_smooth_time: %.6f"
+                % (pressure_advance, smooth_time))
+-        self.printer.set_rollover_info(self.name, "%s: %s" % (self.name, msg))
++        # log=False: equivalent du log_pressure_advance_changes de Kalico. Chaque
++        # SET_PRESSURE_ADVANCE ecrivait dans klippy.log depuis le fil temps reel.
++        self.printer.set_rollover_info(self.name, "%s: %s" % (self.name, msg),
++                                       log=False)
+         gcmd.respond_info(msg, log=False)
+     cmd_SET_E_ROTATION_DISTANCE_help = "Set extruder rotation distance"
+     def cmd_SET_E_ROTATION_DISTANCE(self, gcmd):
+diff --git a/klippy/toolhead.py b/klippy/toolhead.py
+index 5f1224356..c0449f0de 100644
+--- a/klippy/toolhead.py
++++ b/klippy/toolhead.py
+@@ -583,7 +583,8 @@ class ToolHeadCommandHelper:
+                "max_accel: %.6f\n"
+                "minimum_cruise_ratio: %.6f\n"
+                "square_corner_velocity: %.6f" % (mv, ma, mcr, scv))
+-        self.printer.set_rollover_info("toolhead", "toolhead: %s" % (msg,))
++        self.printer.set_rollover_info("toolhead", "toolhead: %s" % (msg,),
++                                       log=False)
+         if (max_velocity is None and max_accel is None
+             and square_corner_velocity is None and min_cruise_ratio is None):
+             gcmd.respond_info(msg, log=False)
+-- 
+2.34.1
+

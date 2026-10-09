@@ -1,0 +1,51 @@
+# Pinned upstream versions. Sourced by install.sh, the build scripts and CI.
+# The "bump" workflow rewrites the *_REF / *_VERSION lines; keep one KEY=value per line.
+
+# Klipper (host + MCU firmware are always built from this exact tree + patches/klipper)
+KLIPPER_REPO=https://github.com/Klipper3d/klipper.git
+KLIPPER_BRANCH=master
+KLIPPER_REF=461c4e3722c3a897fba1c6b3f0780a5315043842
+
+# Happy Hare (MMU software for the Qidi Box) + patches/happy-hare
+HAPPY_HARE_REPO=https://github.com/moggieuk/Happy-Hare.git
+HAPPY_HARE_BRANCH=development
+HAPPY_HARE_REF=c951d7855d353026b2c830f153be292f271cfb32
+
+MOONRAKER_REPO=https://github.com/Arksine/moonraker.git
+MOONRAKER_BRANCH=master
+MOONRAKER_REF=9e676eba6b02661a4dfa3ec6e7ac3f3504498e6d
+
+# Katapult: only flashtool.py is used (the bootloaders come from the deployers below)
+KATAPULT_REPO=https://github.com/Arksine/katapult.git
+KATAPULT_BRANCH=master
+KATAPULT_REF=3b973a485388b4ef0f9efef46f78152e302aea8e
+
+AUTOPA_REPO=https://github.com/G0BL1N/autopa.git
+AUTOPA_BRANCH=main
+AUTOPA_REF=7bd656d2d51a5010555fa41b46d40d8bf0d6e71c
+
+TIMELAPSE_REPO=https://github.com/mainsail-crew/moonraker-timelapse.git
+TIMELAPSE_BRANCH=main
+TIMELAPSE_REF=c7fff11e542b95e0e15b8bb1443cea8159ac0274
+
+MAINSAIL_CONFIG_REPO=https://github.com/mainsail-crew/mainsail-config.git
+MAINSAIL_CONFIG_BRANCH=master
+MAINSAIL_CONFIG_REF=ff3869a621db17ce3ef660adbbd3fa321995ac42
+
+# gcode_shell_command.py (KIAUH extension) used by the power-loss-recovery macros
+KIAUH_REPO=https://github.com/dw-0/kiauh.git
+KIAUH_BRANCH=master
+KIAUH_REF=d3e538de7b3163abe27fdf8116a60716d4db31ce
+
+MAINSAIL_VERSION=v2.19.0
+FLUIDD_VERSION=v1.37.6
+SPOOLMAN_VERSION=v0.27.0
+PRINTGUARD_VERSION=v2.5.0
+
+# First-time Katapult install without an ST-Link (n3oney/qidi-q2-klipper deployers,
+# flashed through Qidi's own update scripts). Pinned on purpose: never auto-bumped.
+DEPLOYER_URL=https://github.com/n3oney/qidi-q2-klipper/releases/download/build-4d40dca6b5ebdbd3e11b06782e2a48ead9b6e1fc/katapult-deployer.tar.gz
+DEPLOYER_SHA256=8b74d47dec89aab19059f66b168e1ff448467b7f9a0f6e9d48589b0c0b9a5a0b
+DEPLOYER_MCU_SHA256=6ca9d065a6317d732589557dcc31f43fc427c36516f08d515832d4c4675290f6
+DEPLOYER_THR_SHA256=890948b73bce0e3ee4a264cf3d0610e5e616279bb554f819e45e9eefac1340c9
+DEPLOYER_MMU_SHA256=c693875a922322bd57ab9d3bb49a4250da34402dc2e78997f90bf78337f2d8fa

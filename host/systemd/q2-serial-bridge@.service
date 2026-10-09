@@ -1,0 +1,18 @@
+# Klipper host side: one local pty per MCU, bridged to the printer board's serial proxy.
+# Instance = main:7001 | thr:7002 | mmu:7003 -> @HOME@/printer_data/comms/q2-<name>
+# Klipper cannot open a TCP socket itself, so it talks to this pty.
+[Unit]
+Description=Q2 MCU serial bridge (%i)
+After=network-online.target
+Wants=network-online.target
+Before=klipper.service
+
+[Service]
+User=@USER@
+ExecStart=/bin/sh -c 'n=$${0%%:*}; p=$${0##*:}; exec /usr/bin/socat -d PTY,link=@HOME@/printer_data/comms/q2-$$n,raw,echo=0 TCP:@PRINTER_IP@:$$p,tcp-nodelay,keepalive' %i
+Restart=always
+RestartSec=1
+Nice=-10
+
+[Install]
+WantedBy=multi-user.target

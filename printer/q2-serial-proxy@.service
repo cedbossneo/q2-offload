@@ -1,0 +1,20 @@
+# Printer board side: expose one MCU serial port over TCP to the Klipper host.
+# Instance = main | thr | mmu, settings in /etc/q2-serial-proxy/<instance>.env
+[Unit]
+Description=Q2 MCU serial proxy (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/q2-serial-proxy/%i.env
+# tcp-nodelay = Nagle off; range = only the Klipper host may connect.
+# fork reopens the device for every connection, so a USB MCU that re-enumerated
+# after FIRMWARE_RESTART is picked up when the host bridge reconnects.
+# Same pattern as github.com/theboleslaw/Klipper-Offload (Qidi AP board).
+ExecStart=/usr/bin/socat -d TCP-LISTEN:${PORT},reuseaddr,fork,tcp-nodelay,keepalive,range=${ALLOW} FILE:${DEVICE},raw,echo=0${SERIAL_OPTS}
+Restart=always
+RestartSec=1
+Nice=-10
+
+[Install]
+WantedBy=multi-user.target

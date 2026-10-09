@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+# Runs ON the Qidi Q2 printer board (stock Qidi OS, user mks), copied there by install.sh.
+# Every subcommand is idempotent. Run as root (install.sh uses: ssh -t ... sudo bash ...).
+#
+#   q2-printer.sh backup
+#   q2-printer.sh detect
+#   q2-printer.sh proxy-install <klipper-host-ip>
+#   q2-printer.sh stock-stop | stock-start
+#   q2-printer.sh proxies-start | proxies-stop
+#   q2-printer.sh katapult-status <main|thr|box>
+#   q2-printer.sh deploy-katapult <main|thr|box> <deployer.bin>
+#   q2-printer.sh flash <main|thr|box> <firmware.bin>
+#   q2-printer.sh status
+set -Eeuo pipefail
+
+USER_HOME="${Q2_PRINTER_HOME:-/home/mks}"
+WORK="${USER_HOME}/q2-offload"
+FLASHTOOL="${WORK}/flashtool.py"
+STOCK_SERVICES="klipper klipper-mcu moonraker makerbase-client"
+THR_DEVICE=/dev/ttyS4
+THR_BAUD=500000
+
+# Katapult application offsets: the firmware must be linked for exactly these.
+declare -A OFFSET=([main]=0x8008000 [thr]=0x8002000 [box]=0x8004000)
+declare -A MCU_TYPE=([main]=stm32f407xx [thr]=stm32f103xe [box]=stm32f401xc)
+declare -A PORT=([main]=7001 [thr]=7002 [mmu]=7003)
+
+info() { printf '==> %s\n' "$*"; }
+die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+[ "$(id -u)" = 0 ] || die "run as root (sudo)"
+mkdir -p "$WORK"
+
+python_bin() {
+    # Klipper's venv on the stock image has pyserial; fall back to python3 + python3-serial
+    if [ -x "${USER_HOME}/klippy-env/bin/python" ]; then
+        echo "${USER_HOME}/klippy-env/bin/python"
+    else
+        python3 -c 'import serial' 2>/dev/null || apt-get install -y -qq python3-serial >/dev/null
+        echo python3
+    fi
+}
+
+# One device or nothing; fails on ambiguity (two boxes, leftovers...)
+one_device() {
+    local matches=()
+    shopt -s nullglob
+    # shellcheck disable=SC2206  # $1 is a glob pattern, expanded on purpose
+    matches=($1)
+    shopt -u nullglob
+    [ "${#matches[@]}" -le 1 ] || die "several devices match $1: ${matches[*]}"
+    [ "${#matches[@]}" -eq 1 ] && echo "${matches[0]}"
+    return 0
+}
+
+klipper_device() {
+    case "$1" in
+        main) one_device "/dev/serial/by-id/usb-Klipper_${MCU_TYPE[main]}_*-if00" ;;
+        box)  one_device "/dev/serial/by-id/usb-Klipper_${MCU_TYPE[box]}_*-if00" ;;
+        thr)  echo "$THR_DEVICE" ;;
+    esac
+}
+
+katapult_device() {
+    case "$1" in
+        main|box) one_device "/dev/serial/by-id/usb-katapult_${MCU_TYPE[$1]}_*-if00" ;;
+        thr) echo "$THR_DEVICE" ;;
+    esac
+}
+
+flashtool() {
+    [ -f "$FLASHTOOL" ] || die "missing $FLASHTOOL (install.sh copies it)"
+    "$(python_bin)" "$FLASHTOOL" "$@"
+}
+
+cmd_backup() {
+    local out
+    out="${WORK}/backup-$(date +%Y%m%d-%H%M%S).tgz"
+    systemctl list-unit-files --type=service --state=enabled --no-legend > "${WORK}/enabled-services.txt"
+    tar czf "$out" -C "$USER_HOME" --ignore-failed-read printer_data/config \
+        q2-offload/enabled-services.txt 2>/dev/null || true
+    chown -R "$(stat -c %U "$USER_HOME")": "$WORK"
+    info "backup: $out"
+}
+
+cmd_detect() {
+    local d
+    for m in main thr box; do
+        d="$(klipper_device "$m")"
+        printf '%-5s klipper : %s\n' "$m" "${d:-<none>}"
+        d="$(katapult_device "$m")"
+        [ "$m" = thr ] || printf '%-5s katapult: %s\n' "$m" "${d:-<none>}"
+    done
+    ls -l /dev/serial/by-id/ 2>/dev/null || true
+}
+
+cmd_proxy_install() {
+    local host="${1:?klipper host ip}" main box
+    command -v socat >/dev/null || { info "installing socat"; apt-get install -y -qq socat >/dev/null; }
+    main="$(klipper_device main)"; box="$(klipper_device box)"
+    [ -n "$main" ] || die "mainboard not found as usb-Klipper_${MCU_TYPE[main]} (flash it first)"
+    [ -n "$box" ] || die "Qidi Box not found as usb-Klipper_${MCU_TYPE[box]} (flash it first)"
+    mkdir -p /etc/q2-serial-proxy
+    printf 'DEVICE=%s\nPORT=%s\nALLOW=%s/32\nSERIAL_OPTS=\n' "$main" "${PORT[main]}" "$host" > /etc/q2-serial-proxy/main.env
+    printf 'DEVICE=%s\nPORT=%s\nALLOW=%s/32\nSERIAL_OPTS=,b%s\n' "$THR_DEVICE" "${PORT[thr]}" "$host" "$THR_BAUD" > /etc/q2-serial-proxy/thr.env
+    printf 'DEVICE=%s\nPORT=%s\nALLOW=%s/32\nSERIAL_OPTS=\n' "$box" "${PORT[mmu]}" "$host" > /etc/q2-serial-proxy/mmu.env
+    install -m 644 "${WORK}/q2-serial-proxy@.service" /etc/systemd/system/
+    systemctl daemon-reload
+    info "proxies configured for host ${host}"
+}
+
+cmd_stock_stop() {
+    for s in $STOCK_SERVICES; do
+        systemctl list-unit-files "${s}.service" --no-legend | grep -q . || continue
+        systemctl disable --now "$s" >/dev/null 2>&1 || true
+        info "stopped and disabled ${s}"
+    done
+}
+
+cmd_stock_start() {
+    cmd_proxies_stop
+    for s in $STOCK_SERVICES; do
+        systemctl list-unit-files "${s}.service" --no-legend | grep -q . || continue
+        systemctl enable --now "$s" >/dev/null 2>&1 || true
+        info "enabled ${s}"
+    done
+}
+
+cmd_proxies_start() {
+    systemctl enable --now q2-serial-proxy@main q2-serial-proxy@thr q2-serial-proxy@mmu
+    info "proxies running"
+}
+
+cmd_proxies_stop() {
+    systemctl disable --now q2-serial-proxy@main q2-serial-proxy@thr q2-serial-proxy@mmu >/dev/null 2>&1 || true
+}
+
+# Print Katapult status and check the application offset and MCU type.
+cmd_katapult_status() {
+    local m="${1:?main|thr|box}" dev out
+    dev="$(katapult_device "$m")"
+    [ -n "$dev" ] || die "${m}: no Katapult device (is the MCU in its bootloader?)"
+    if [ "$m" = thr ]; then out="$(flashtool -d "$dev" -b "$THR_BAUD" -s 2>&1)"; else out="$(flashtool -d "$dev" -s 2>&1)"; fi
+    echo "$out"
+    echo "$out" | grep -qi "Application Start: 0x0*${OFFSET[$m]#0x}" \
+        || die "${m}: Katapult application offset is not ${OFFSET[$m]}, refusing to flash"
+    echo "$out" | grep -qi "MCU type: ${MCU_TYPE[$m]}" \
+        || die "${m}: Katapult reports another MCU type than ${MCU_TYPE[$m]}"
+    info "${m}: Katapult OK (${OFFSET[$m]}, ${MCU_TYPE[$m]})"
+}
+
+# Reboot a running Klipper MCU into Katapult and wait for the bootloader.
+enter_katapult() {
+    local m="$1" dev
+    dev="$(katapult_device "$m")"
+    if [ "$m" != thr ] && [ -n "$dev" ]; then return 0; fi
+    dev="$(klipper_device "$m")"
+    [ -n "$dev" ] || die "${m}: neither Klipper nor Katapult device found"
+    info "${m}: requesting the bootloader on ${dev}"
+    if [ "$m" = thr ]; then
+        # A UART has no USB descriptor to wait for: give Katapult a moment to start
+        flashtool -d "$dev" -b "$THR_BAUD" -r
+        sleep 1
+        return 0
+    fi
+    flashtool -d "$dev" -r
+    for _ in $(seq 1 20); do
+        sleep 0.5
+        [ -n "$(katapult_device "$m")" ] && return 0
+    done
+    die "${m}: Katapult did not show up"
+}
+
+cmd_flash() {
+    local m="${1:?main|thr|box}" bin="${2:?firmware.bin}" dev
+    [ -s "$bin" ] || die "missing firmware $bin"
+    enter_katapult "$m"
+    cmd_katapult_status "$m"
+    dev="$(katapult_device "$m")"
+    info "${m}: flashing $(basename "$bin")"
+    if [ "$m" = thr ]; then flashtool -d "$dev" -b "$THR_BAUD" -f "$bin"; else flashtool -d "$dev" -f "$bin"; fi
+    info "${m}: flashed"
+}
+
+# First conversion from stock: Qidi's own update scripts flash a Katapult deployer while
+# the stock firmware still runs (they read its dictionary to find the reset command).
+cmd_deploy_katapult() {
+    local m="${1:?main|thr|box}" bin="${2:?deployer.bin}" box
+    [ -s "$bin" ] || die "missing deployer $bin"
+    systemctl stop klipper klipper-mcu 2>/dev/null || true
+    case "$m" in
+        main) bash "${USER_HOME}/mcu_update.sh" "$bin" ;;
+        thr)  bash "${USER_HOME}/mcu_update_THR.sh" "$bin" ;;
+        box)
+            box="$(one_device '/dev/serial/by-id/usb-Klipper_QIDI_BOX_V2*-if00')"
+            [ -n "$box" ] || box="$(klipper_device box)"
+            [ -n "$box" ] || die "Qidi Box not found (usb-Klipper_QIDI_BOX_V2* or usb-Klipper_stm32f401xc*)"
+            bash "${USER_HOME}/mcu_update_BOX_to_v2.sh" "$bin" "$box"
+            ;;
+    esac
+    sleep 3
+    cmd_katapult_status "$m"
+}
+
+cmd_status() {
+    cmd_detect
+    systemctl --no-pager --no-legend list-units 'q2-serial-proxy@*' || true
+    for s in $STOCK_SERVICES; do
+        printf '%-18s %s\n' "$s" "$(systemctl is-enabled "$s" 2>/dev/null || echo absent)"
+    done
+}
+
+sub="${1:-}"; shift || true
+case "$sub" in
+    backup) cmd_backup ;;
+    detect) cmd_detect ;;
+    proxy-install) cmd_proxy_install "$@" ;;
+    stock-stop) cmd_stock_stop ;;
+    stock-start) cmd_stock_start ;;
+    proxies-start) cmd_proxies_start ;;
+    proxies-stop) cmd_proxies_stop ;;
+    katapult-status) cmd_katapult_status "$@" ;;
+    deploy-katapult) cmd_deploy_katapult "$@" ;;
+    flash) cmd_flash "$@" ;;
+    status) cmd_status ;;
+    *) sed -n '2,15p' "$0"; exit 2 ;;
+esac

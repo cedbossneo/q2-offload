@@ -1,0 +1,90 @@
+name: Upstream update
+
+# Daily: move Klipper, Happy Hare, Moonraker, autopa, web clients... to their latest
+# upstream versions. The candidate goes through the full CI (patches must apply, firmware
+# must build, the config must validate). If it passes it is pushed to main and the matching
+# firmware is released; if not, an issue explains what blocked it.
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: bump
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      changed: ${{ steps.bump.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Resolve latest upstream versions
+        id: bump
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          scripts/bump.sh | tee changes.txt
+          if git diff --quiet VERSIONS; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          git config user.name "q2-offload-bot"
+          git config user.email "q2-offload-bot@users.noreply.github.com"
+          { echo "chore: bump upstream versions"; echo; cat changes.txt; } > msg.txt
+          git commit -q -F msg.txt VERSIONS
+          git push -f origin HEAD:refs/heads/auto/bump
+
+  validate:
+    needs: prepare
+    if: needs.prepare.outputs.changed == 'true'
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: auto/bump
+
+  publish:
+    needs: [prepare, validate]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: auto/bump
+          fetch-depth: 0
+      - name: Fast-forward main
+        run: |
+          git fetch -q origin main
+          git merge-base --is-ancestor origin/main HEAD || { echo "main moved, retrying tomorrow"; exit 1; }
+          git push origin HEAD:refs/heads/main
+          git push origin --delete auto/bump
+
+  release:
+    needs: publish
+    uses: ./.github/workflows/release.yml
+    with:
+      ref: main
+    permissions:
+      contents: write
+
+  report-failure:
+    needs: [prepare, validate, publish]
+    if: failure()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Open or update the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          title="Automatic upstream update is blocked"
+          body="The daily upstream update failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          Usually a Klipper patch no longer applies, or Happy Hare renamed something that config/happy-hare/overrides.cfg targets. Users keep the last good versions until this is fixed."
+          num="$(gh issue list --state open --search "in:title \"${title}\"" --json number --jq '.[0].number')"
+          if [ -n "$num" ]; then gh issue comment "$num" --body "$body"; else gh issue create --title "$title" --body "$body"; fi

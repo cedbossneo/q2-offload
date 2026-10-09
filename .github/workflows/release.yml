@@ -1,0 +1,72 @@
+name: Release firmware
+
+# Publish the MCU firmware for the current VERSIONS as release "fw-<klipper>-<patches hash>".
+# install.sh downloads exactly that release, so host Klipper and MCUs always match.
+on:
+  push:
+    branches: [main]
+    paths: [VERSIONS, patches/klipper/**, firmware/configs/**, scripts/build-firmware.sh, scripts/prepare-klipper.sh]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - name: Firmware id
+        id: fw
+        run: |
+          . scripts/lib.sh
+          echo "id=$(firmware_id)" >> "$GITHUB_OUTPUT"
+      - name: Already published?
+        id: exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "fw-${{ steps.fw.outputs.id }}" >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Toolchain
+        if: steps.exists.outputs.skip != 'true'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq gcc-arm-none-eabi libnewlib-arm-none-eabi
+      - name: Build
+        if: steps.exists.outputs.skip != 'true'
+        run: |
+          scripts/prepare-klipper.sh "$RUNNER_TEMP/klipper"
+          scripts/build-firmware.sh "$RUNNER_TEMP/klipper" dist
+      - name: Publish
+        if: steps.exists.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          . scripts/lib.sh
+          id="${{ steps.fw.outputs.id }}"
+          {
+            echo "MCU firmware for q2-offload \`$(git rev-parse --short HEAD)\`."
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Klipper | [\`${KLIPPER_REF:0:9}\`](https://github.com/Klipper3d/klipper/commit/${KLIPPER_REF}) + \`patches/klipper\` |"
+            echo "| Version string | \`$(sed -n 's/^KLIPPER_VERSION=//p' dist/BUILD_INFO)\` |"
+            echo "| Mainboard | GD32F425 @ 200 MHz, USB, Katapult offset 0x8008000 |"
+            echo "| Toolhead | GD32F303 @ 120 MHz, UART 500000, Katapult offset 0x8002000 |"
+            echo "| Qidi Box | STM32F401, USB, Katapult offset 0x8004000 |"
+            echo
+            echo "Flash with \`./install.sh flash\` (it checks the Katapult offset before writing)."
+            echo
+            echo '```'
+            cat dist/SHA256SUMS
+            echo '```'
+          } > notes.md
+          gh release create "fw-${id}" dist/* --target "$(git rev-parse HEAD)" \
+            --title "Firmware ${id}" --notes-file notes.md
