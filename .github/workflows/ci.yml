@@ -78,6 +78,8 @@ jobs:
         run: scripts/validate-config.sh dist
       - name: Re-run the installer (update path must be idempotent)
         run: ./install.sh host --ci --yes && scripts/validate-config.sh dist
+      - name: Unattended update, user phase (what Moonraker triggers)
+        run: ./install.sh _update-user --unattended --ci && scripts/validate-config.sh dist
       - name: Logs
         if: failure()
         run: |

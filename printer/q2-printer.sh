@@ -11,7 +11,8 @@
 #   q2-printer.sh deploy-katapult <main|thr|box> <deployer.bin>
 #   q2-printer.sh flash <main|thr|box> <firmware-dir>
 #   q2-printer.sh convert <firmware-id> [deploy]   (deploy Katapult if needed, flash all three)
-#   q2-printer.sh setup <klipper-host-ip>          (proxy-install + stock-stop + proxies-start)
+#   q2-printer.sh setup <klipper-host-ip>          (proxy-install + stock-stop + proxies-start + sudoers)
+#   q2-printer.sh sudoers                          (passwordless sudo for this script only)
 #   q2-printer.sh status
 set -Eeuo pipefail
 
@@ -277,10 +278,28 @@ cmd_convert() {
     info "all MCUs on firmware ${id}"
 }
 
+# Let the printer user run this script (and only this one) as root without a password, so
+# the host can drive it non-interactively. mks already has full sudo with the well-known
+# stock password, so this grants nothing new.
+cmd_sudoers() {
+    local u tmp
+    u="$(stat -c %U "$USER_HOME")"
+    tmp="$(mktemp)"
+    printf '# q2-offload: host-driven printer maintenance
+%s ALL=(root) NOPASSWD: /bin/bash %s/q2-printer.sh *, /usr/bin/bash %s/q2-printer.sh *
+' \
+        "$u" "$WORK" "$WORK" > "$tmp"
+    visudo -cqf "$tmp" || die "invalid sudoers rule"
+    install -m 440 "$tmp" /etc/sudoers.d/q2-offload
+    rm -f "$tmp"
+    info "sudo rule for ${u}: q2-printer.sh only"
+}
+
 cmd_setup() {
     cmd_proxy_install "${1:?klipper host ip}"
     cmd_stock_stop
     cmd_proxies_start
+    cmd_sudoers
 }
 
 cmd_status() {
@@ -305,6 +324,7 @@ case "$sub" in
     flash) cmd_flash "$@" ;;
     convert) cmd_convert "$@" ;;
     setup) cmd_setup "$@" ;;
+    sudoers) cmd_sudoers ;;
     status) cmd_status ;;
     *) sed -n '2,15p' "$0"; exit 2 ;;
 esac

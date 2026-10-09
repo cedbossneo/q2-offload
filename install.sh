@@ -16,10 +16,29 @@
 #   --build-firmware             build the MCU firmware here instead of downloading it
 #   --yes                        answer yes to plain yes/no questions (flashing always asks)
 #   --ci                         CI mode: host software only, no systemd/nginx/docker/printer
+#
+# Internal: "update --unattended --as-user <user>" is run as root by q2-offload.service
+# when Moonraker has updated the q2-offload repo (see host/moonraker.conf).
 set -Eeuo pipefail
 
 Q2_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export Q2_ROOT
+
+# Unattended root run: everything that follows works on the target user's home
+UNATTENDED=0; AS_USER=""
+for ((i = 1; i <= $#; i++)); do
+    case "${!i}" in
+        --unattended) UNATTENDED=1 ;;
+        --as-user) j=$((i + 1)); AS_USER="${!j:-}" ;;
+    esac
+done
+if [ "$UNATTENDED" = 1 ] && [ "$(id -u)" = 0 ]; then
+    [ -n "$AS_USER" ] || { echo "ERROR: --unattended as root needs --as-user" >&2; exit 2; }
+    HOME="$(getent passwd "$AS_USER" | cut -d: -f6)"
+    [ -n "$HOME" ] || { echo "ERROR: no user ${AS_USER}" >&2; exit 2; }
+    USER="$AS_USER"
+    export HOME USER
+fi
 . "${Q2_ROOT}/scripts/lib.sh"
 . "${Q2_ROOT}/scripts/host.sh"
 . "${Q2_ROOT}/scripts/remote.sh"
@@ -33,7 +52,7 @@ usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 command="install"
 case "${1:-}" in
-    install|update|host|printer|flash|status) command="$1"; shift ;;
+    install|update|host|printer|flash|status|_update-check|_update-user) command="$1"; shift ;;
     -h|--help) usage ;;
 esac
 while [ $# -gt 0 ]; do
@@ -43,6 +62,8 @@ while [ $# -gt 0 ]; do
         --build-firmware) BUILD_FIRMWARE=1; shift ;;
         --yes|-y) ASSUME_YES=1; shift ;;
         --ci) Q2_CI=1; shift ;;
+        --unattended) shift ;;
+        --as-user) shift 2 ;;
         -h|--help) usage ;;
         *) warn "unknown option $1"; usage 2 ;;
     esac
@@ -59,6 +80,7 @@ Q2_ORIGIN="$(git -C "$Q2_ROOT" remote get-url origin 2>/dev/null || echo https:/
 Q2_GITHUB_REPO="$(echo "$Q2_ORIGIN" | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')"
 
 save_settings() {
+    [ "$(id -u)" = 0 ] && return 0  # unattended root phase: the user phase already saved them
     mkdir -p "$STATE_DIR"
     cat > "$SETTINGS" <<EOF
 PRINTER_IP=${PRINTER_IP}
@@ -68,9 +90,11 @@ EOF
 }
 
 preflight() {
-    [ "$(id -u)" != 0 ] || die "run as your normal user (sudo is used where needed), not as root"
+    if [ "$UNATTENDED" != 1 ]; then
+        [ "$(id -u)" != 0 ] || die "run as your normal user (sudo is used where needed), not as root"
+        in_ci || sudo -v || die "sudo is required"
+    fi
     command -v apt-get >/dev/null || die "only Debian/Ubuntu hosts are supported"
-    in_ci || sudo -v || die "sudo is required"
     COMPONENTS="${COMPONENTS:-$ALL_COMPONENTS}"
     local c
     for c in ${COMPONENTS//,/ }; do
@@ -162,6 +186,71 @@ do_update() {
     wait_ready || true
 }
 
+# Unattended update (q2-offload.service), root part. Option chosen for this project:
+# when the MCU firmware would change, nothing is updated and the user is told to run
+# "./install.sh update" in a terminal (flashing needs someone at the printer).
+do_update_unattended() {
+    [ "$(id -u)" = 0 ] || die "--unattended runs as root (q2-offload.service)"
+    exec 9> /run/q2-offload-update.lock
+    flock -n 9 || die "an update is already running"
+    echo "===== $(date -Is) q2-offload update"
+    run_user() {
+        runuser -u "$AS_USER" -- env HOME="$HOME" USER="$AS_USER" PATH=/usr/local/bin:/usr/bin:/bin \
+            "${Q2_ROOT}/install.sh" "$@" --unattended
+    }
+    local rc=0
+    run_user _update-check || rc=$?
+    case "$rc" in
+        0) ;;
+        10|11) return 0 ;;  # flash needed / print running: already reported
+        *) notify "update check failed (logs/q2-offload-update.log)"; return 1 ;;
+    esac
+    notify "updating Klipper, Happy Hare and the web clients, Klipper will restart"
+    run_user _update-user || { notify "update FAILED (logs/q2-offload-update.log)"; return 1; }
+    # Root phase: system packages, nginx, containers, units, restarts
+    preflight
+    moonraker_sysdeps
+    host_nginx
+    host_spoolman
+    host_printguard
+    host_services
+    systemctl restart klipper
+    if [ -e "${STATE_DIR}/moonraker-changed" ]; then
+        rm -f "${STATE_DIR}/moonraker-changed"
+        systemctl restart moonraker
+        sleep 5
+    fi
+    wait_ready || true
+    notify "update done (firmware $(firmware_id))"
+}
+
+# User part 1: nothing is changed unless the update can complete without flashing
+do_update_check() {
+    preflight
+    if printing; then
+        notify "a print is running: update not applied, use Update again after the print"
+        return 11
+    fi
+    local cur
+    cur="$(printer_firmware_id)"
+    if [ "$cur" != "$(firmware_id)" ]; then
+        notify "this update changes the MCU firmware (${cur:-unknown} -> $(firmware_id)): nothing was changed. Run ./install.sh update in a terminal on the host to update and flash."
+        return 10
+    fi
+}
+
+# User part 2: everything under the user's home
+do_update_user() {
+    preflight
+    host_klipper
+    host_moonraker_update
+    host_extensions
+    host_config
+    host_happy_hare
+    host_autopa
+    host_web_clients
+}
+
 do_status() {
     [ -f "$SETTINGS" ] || die "not installed yet"
     banner
@@ -190,7 +279,9 @@ EOF
 
 case "$command" in
     install) do_install ;;
-    update) do_update ;;
+    update) if [ "$UNATTENDED" = 1 ] && [ "$(id -u)" = 0 ]; then do_update_unattended; else do_update; fi ;;
+    _update-check) do_update_check ;;
+    _update-user) do_update_user ;;
     host) preflight; banner; host_install_all; in_ci || host_start ;;
     printer) preflight; printer_ssh_key; printer_push; printer_proxies; printer_helixscreen ;;
     flash) preflight; printing && die "a print is running"; host_firmware; printer_ssh_key; printer_push; printer_convert; proot proxies-start; host_start ;;

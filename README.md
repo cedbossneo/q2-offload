@@ -80,18 +80,35 @@ builds the firmware, installs the whole stack on a clean machine and validates t
 configuration against the new firmware. Only a version that passes reaches `main`, with
 its firmware published as a release.
 
+**From Mainsail or Fluidd:** update **q2-offload** in the update manager. Moonraker pulls
+the repo, then starts `q2-offload.service`, which installs the new Klipper, Happy Hare,
+autopa, web clients and containers and restarts Klipper. Progress and errors appear in the
+console and in `logs/q2-offload-update.log`.
+
+- Nothing is applied during a print.
+- If the new Klipper needs the MCUs reflashed, nothing is changed: flashing needs someone at
+  the printer, so the console asks you to run the terminal update below.
+
+**From a terminal** (also the way to update when a flash is needed):
+
 ```sh
 cd ~/q2-offload && git pull && ./install.sh update
 ```
 
-`update` refuses to run during a print. When the Klipper version changes it reflashes
-the three MCUs (through Katapult, offsets checked), because the host and the MCUs must
-run the same Klipper. Your edits to the installed config files are kept: a changed
-upstream version is written next to them as `*.new`. `printer.cfg` and `moonraker.conf`
-are yours after the first install.
+It reflashes the three MCUs when the Klipper version changes (through Katapult, offsets and
+image MCU type checked, typed confirmation), because the host and the MCUs must run the
+same Klipper. Your edits to the installed config files are kept: a changed upstream
+version is written next to them as `*.new`. `printer.cfg` and `moonraker.conf` are yours
+after the first install; settings listed in `config/happy-hare/overrides.cfg` are
+re-applied on every update.
 
-Klipper, Happy Hare and autopa are updated by `install.sh update`, not from the
-Moonraker update manager (they are patched, and the firmware must match).
+Klipper, Happy Hare and autopa are not listed separately in the update manager (they are
+patched, and the firmware must match Klipper). Klipper shows as "dirty/invalid" there:
+never use "Recover" on it.
+
+The printer board gets a sudo rule that lets its `mks` user run `q2-offload/q2-printer.sh`
+(and nothing else) as root without a password, so the host can drive it non-interactively.
+`mks` already has full sudo with the stock password, so this grants nothing new.
 
 ## What is in here
 

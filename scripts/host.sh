@@ -10,6 +10,17 @@ KLIPPY_ENV="${HOME}/klippy-env"
 
 has() { [[ ",${COMPONENTS}," == *",$1,"* ]]; }
 
+# The unattended update runs its root phase as root: sudo is then a no-op
+# (env keeps "sudo VAR=value cmd" working).
+if [ "$(id -u)" = 0 ]; then sudo() { env "$@"; }; fi
+
+# Tell the user in the Mainsail/Fluidd console and in logs/q2-offload-update.log
+notify() {
+    echo "q2-offload: $*"
+    curl -s -o /dev/null -X POST -G --data-urlencode "script=RESPOND TYPE=command MSG=\"q2-offload: $*\"" \
+        localhost:7125/printer/gcode/script 2>/dev/null || true
+}
+
 # Systemd/nginx/docker are skipped in CI containers
 in_ci() { [ "${Q2_CI:-0}" = 1 ]; }
 
@@ -129,11 +140,61 @@ host_moonraker() {
     if has spoolman && ! grep -q '^\[spoolman\]' "${CFG}/moonraker.conf"; then
         printf '\n[spoolman]\nserver: http://localhost:7912\nsync_rate: 5\n' >> "${CFG}/moonraker.conf"
     fi
+    moonraker_conf_migrate
     info "Installing Moonraker"
     local args=(-f -s)
     in_ci && args+=(-z -x)
     "${HOME}/moonraker/scripts/install-moonraker.sh" "${args[@]}" >/dev/null
+    moonraker_asvc
     ok "Moonraker $(git -C "${HOME}/moonraker" describe --tags --always)"
+}
+
+# Unattended update, user phase: no sudo available, so only the checkout and Python deps
+# (system packages are handled by moonraker_sysdeps in the root phase)
+host_moonraker_update() {
+    local before after
+    before="$(git -C "${HOME}/moonraker" rev-parse HEAD 2>/dev/null || true)"
+    checkout_ref "$MOONRAKER_REPO" "$MOONRAKER_REF" "${HOME}/moonraker"
+    after="$(git -C "${HOME}/moonraker" rev-parse HEAD)"
+    if [ "$before" != "$after" ]; then
+        "${HOME}/moonraker-env/bin/pip" install -q -r "${HOME}/moonraker/scripts/moonraker-requirements.txt" \
+            -r "${HOME}/moonraker/scripts/moonraker-speedups.txt"
+        touch "${STATE_DIR}/moonraker-changed"
+    fi
+    moonraker_conf_migrate
+    moonraker_asvc
+    ok "Moonraker $(git -C "${HOME}/moonraker" describe --tags --always)"
+}
+
+moonraker_sysdeps() {
+    local pkgs
+    pkgs="$(python3 -c 'import json,sys; print(" ".join(p for p in json.load(open(sys.argv[1]))["debian"] if ";" not in p))' \
+        "${HOME}/moonraker/scripts/system-dependencies.json")"
+    # shellcheck disable=SC2086
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $pkgs >/dev/null
+}
+
+# Moonraker restarts the services listed in managed_services after updating a repo: the
+# q2-offload entry triggers q2-offload.service, which runs "install.sh update".
+moonraker_conf_migrate() {
+    python3 - "${CFG}/moonraker.conf" <<'EOF'
+import re, sys
+path = sys.argv[1]
+s = open(path).read()
+m = re.search(r'^\[update_manager q2-offload\]\n((?:[^\[\n].*\n|\n)*)', s, re.M)
+if m and 'managed_services' not in m.group(1):
+    body = re.sub(r'^is_system_service:.*\n', '', m.group(1), flags=re.M)
+    body = body.rstrip('\n') + '\nmanaged_services: q2-offload\n\n'
+    s = s[:m.start(1)] + body + s[m.end(1):]
+    open(path, 'w').write(s)
+EOF
+}
+
+moonraker_asvc() {
+    local asvc="${DATA}/moonraker.asvc"
+    # Moonraker creates it from this default list on first start; do the same, then add ours
+    [ -f "$asvc" ] || cp "${HOME}/moonraker/moonraker/assets/default_allowed_services" "$asvc"
+    grep -qx q2-offload "$asvc" || echo q2-offload >> "$asvc"
 }
 
 # Drop a whole [section] from an ini-style file (Happy Hare re-adds its update_manager entry)
@@ -215,9 +276,17 @@ web_client() {
     ok "${name} ${version}"
 }
 
+host_web_clients() {
+    if has mainsail; then web_client mainsail mainsail-crew/mainsail "$MAINSAIL_VERSION"; fi
+    if has fluidd; then web_client fluidd fluidd-core/fluidd "$FLUIDD_VERSION"; fi
+}
+
 host_web() {
-    has mainsail && web_client mainsail mainsail-crew/mainsail "$MAINSAIL_VERSION"
-    has fluidd && web_client fluidd fluidd-core/fluidd "$FLUIDD_VERSION"
+    host_web_clients
+    host_nginx
+}
+
+host_nginx() {
     { has mainsail || has fluidd || has autopa; } || return 0
     in_ci && return 0
     local tmp
@@ -290,10 +359,13 @@ host_services() {
     local tmp
     tmp="$(mktemp)"
     render "${Q2_ROOT}/host/systemd/klipper.env" > "${DATA}/systemd/klipper.env"
+    [ "$(id -u)" = 0 ] && chown "${USER}:" "${DATA}/systemd/klipper.env"
     render "${Q2_ROOT}/host/systemd/klipper.service" > "$tmp"
     sudo install -m 644 "$tmp" /etc/systemd/system/klipper.service
     render "${Q2_ROOT}/host/systemd/q2-serial-bridge@.service" > "$tmp"
     sudo install -m 644 "$tmp" /etc/systemd/system/q2-serial-bridge@.service
+    render "${Q2_ROOT}/host/systemd/q2-offload.service" > "$tmp"
+    sudo install -m 644 "$tmp" /etc/systemd/system/q2-offload.service
     rm -f "$tmp"
     sudo systemctl daemon-reload
     sudo systemctl enable -q klipper q2-serial-bridge@main:7001 q2-serial-bridge@thr:7002 q2-serial-bridge@mmu:7003

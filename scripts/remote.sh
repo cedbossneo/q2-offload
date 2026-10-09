@@ -4,10 +4,13 @@
 PRINTER_USER="${PRINTER_USER:-mks}"
 PRINTER_WORK="/home/${PRINTER_USER}/q2-offload"
 SSH_OPTS=(-o ConnectTimeout=10 -o ServerAliveInterval=15)
+# Unattended update: never wait for a password
+[ "${UNATTENDED:-0}" = 1 ] && SSH_OPTS+=(-o BatchMode=yes)
 
 pssh() { ssh "${SSH_OPTS[@]}" "${PRINTER_USER}@${PRINTER_IP}" "$@"; }
-# Root commands: -t so sudo can ask for the password (stock Qidi image: "makerbase")
-proot() { ssh -tt "${SSH_OPTS[@]}" "${PRINTER_USER}@${PRINTER_IP}" sudo bash "${PRINTER_WORK}/q2-printer.sh" "$@"; }
+# Root commands. After "setup", a sudoers rule allows exactly this command without a
+# password; before that, -tt lets sudo ask for it (stock Qidi image: "makerbase").
+proot() { ssh -tt "${SSH_OPTS[@]}" "${PRINTER_USER}@${PRINTER_IP}" sudo /bin/bash "${PRINTER_WORK}/q2-printer.sh" "$@"; }
 
 printer_ssh_key() {
     if ssh -o BatchMode=yes "${SSH_OPTS[@]}" "${PRINTER_USER}@${PRINTER_IP}" true 2>/dev/null; then

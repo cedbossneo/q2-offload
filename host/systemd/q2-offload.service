@@ -1,0 +1,12 @@
+# Started by Moonraker after it updated the q2-offload repo (managed_services in
+# moonraker.conf): applies the new versions. Never enabled at boot.
+# Runs as root for apt/systemd/nginx/docker; everything under @HOME@ is done as @USER@.
+[Unit]
+Description=q2-offload update (applies the q2-offload repo after a Moonraker update)
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=@Q2_ROOT@/install.sh update --unattended --as-user @USER@
+StandardOutput=append:@HOME@/printer_data/logs/q2-offload-update.log
+StandardError=inherit

@@ -5,7 +5,7 @@
 # Usage: tests/flash-sim/run.sh <repo> <firmware-dir>
 set -euo pipefail
 REPO="${1:?repo}"; FW="${2:?firmware dir}"
-command -v fuser >/dev/null || { apt-get update -qq >/dev/null; apt-get install -y -qq --no-install-recommends python3 psmisc >/dev/null; }
+command -v fuser >/dev/null || { apt-get update -qq >/dev/null; apt-get install -y -qq --no-install-recommends python3 psmisc sudo >/dev/null; }
 useradd -m mks; W=/home/mks/q2-offload; mkdir -p $W/firmware $W/deployer /dev/serial/by-id
 cp "$REPO/printer/q2-printer.sh" $W/; cp "$REPO/tests/flash-sim/flashtool.py" $W/flashtool.py
 for m in main thr box; do mkdir -p $W/firmware/$m; cp "$FW/q2-$m.bin" $W/firmware/$m/klipper.bin; cp "$FW/q2-$m.dict" $W/firmware/$m/klipper.dict; done
@@ -26,5 +26,10 @@ echo "== scenario 3: swapped image is refused"
 cp $W/firmware/box/klipper.dict $W/firmware/main/klipper.dict
 if bash $W/q2-printer.sh flash main $W/firmware; then echo "FAIL: flashed a box image on the mainboard"; exit 1; fi
 echo "refused as expected"
+echo "== sudoers rule"
+bash $W/q2-printer.sh sudoers
+cat /etc/sudoers.d/q2-offload
+su mks -c "sudo -n /bin/bash $W/q2-printer.sh detect" >/dev/null || { echo "FAIL: passwordless rule does not match"; exit 1; }
+if su mks -c "sudo -n /bin/true" 2>/dev/null; then echo "FAIL: rule is too broad"; exit 1; fi
 echo "== flashtool calls"; cat /tmp/flashtool.log
 echo "flash simulation OK"
