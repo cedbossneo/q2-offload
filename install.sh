@@ -8,6 +8,7 @@
 #   ./install.sh printer         (re)configure only the printer board (proxies, HelixScreen)
 #   ./install.sh flash           reflash the MCUs (Katapult must already be installed)
 #   ./install.sh status          show what is installed and running
+#   ./install.sh check           check that every installed service answers
 #
 # Options:
 #   --printer <ip>               printer IP address (asked otherwise)
@@ -42,6 +43,7 @@ fi
 . "${Q2_ROOT}/scripts/lib.sh"
 . "${Q2_ROOT}/scripts/host.sh"
 . "${Q2_ROOT}/scripts/remote.sh"
+. "${Q2_ROOT}/scripts/verify.sh"
 
 ALL_COMPONENTS=mainsail,fluidd,spoolman,autopa,printguard
 SETTINGS="${STATE_DIR}/settings.env"
@@ -52,7 +54,7 @@ usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 command="install"
 case "${1:-}" in
-    install|update|host|printer|flash|status|_update-check|_update-user) command="$1"; shift ;;
+    install|update|host|printer|flash|status|check|_update-check|_update-user) command="$1"; shift ;;
     -h|--help) usage ;;
 esac
 while [ $# -gt 0 ]; do
@@ -166,7 +168,9 @@ EOF
     host_start
     wait_ready || true
     printer_helixscreen
-    final_notes
+    local healthy=0
+    verify_install || healthy=1
+    final_notes "$healthy"
 }
 
 do_update() {
@@ -183,6 +187,7 @@ do_update() {
     fi
     host_start
     wait_ready || true
+    verify_install
 }
 
 # Unattended update (q2-offload.service), root part. Option chosen for this project:
@@ -260,10 +265,11 @@ do_status() {
 }
 
 final_notes() {
-    cat <<EOF
-
-${C_OK}Done.${C_OFF}
-EOF
+    if [ "${1:-0}" = 0 ]; then
+        printf '\n%sDone.%s\n' "${C_OK}" "${C_OFF}"
+    else
+        printf '\n%sDone, but some checks failed (see above).%s\n' "${C_WARN}" "${C_OFF}"
+    fi
     has fluidd && echo "  Fluidd      http://${HOST_IP}/"
     has mainsail && echo "  Mainsail    http://${HOST_IP}:${MAINSAIL_PORT}/"
     has autopa && echo "  autopa      http://${HOST_IP}/autopa/"
@@ -285,4 +291,5 @@ case "$command" in
     printer) preflight; printer_prepare; printer_proxies; printer_helixscreen ;;
     flash) preflight; printing && die "a print is running"; host_firmware; printer_prepare; printer_convert; proot proxies-start; host_start ;;
     status) do_status ;;
+    check) [ -f "$SETTINGS" ] || die "not installed yet"; verify_install ;;
 esac
