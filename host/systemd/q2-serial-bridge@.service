@@ -5,11 +5,14 @@
 Description=Q2 MCU serial bridge (%i)
 After=network-online.target
 Wants=network-online.target
+# Keep retrying while the other side is down (printer off, rebooting): the default
+# start limit gives up after 5 failures in 10 s and leaves the link dead.
+StartLimitIntervalSec=0
 Before=klipper.service
 
 [Service]
 User=@USER@
-ExecStart=/bin/sh -c 'n=$${0%%:*}; p=$${0##*:}; exec /usr/bin/socat -d PTY,link=@HOME@/printer_data/comms/q2-$$n,raw,echo=0 TCP:@PRINTER_IP@:$$p,tcp-nodelay,keepalive' %i
+ExecStart=/bin/sh -c 'n=$${0%%:*}; p=$${0##*:}; exec /usr/bin/socat -d PTY,link=@HOME@/printer_data/comms/q2-$$n,raw,echo=0 TCP:@PRINTER_IP@:$$p,tcp-nodelay,keepalive,keepidle=5,keepintvl=2,keepcnt=3' %i
 Restart=always
 RestartSec=1
 Nice=-10

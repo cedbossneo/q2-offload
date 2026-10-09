@@ -4,14 +4,19 @@
 Description=Q2 MCU serial proxy (%i)
 After=network-online.target
 Wants=network-online.target
+# Keep retrying while the other side is down (printer off, rebooting): the default
+# start limit gives up after 5 failures in 10 s and leaves the link dead.
+StartLimitIntervalSec=0
 
 [Service]
 EnvironmentFile=/etc/q2-serial-proxy/%i.env
 # tcp-nodelay = Nagle off; range = only the Klipper host may connect.
+# keepidle/keepintvl/keepcnt: a connection whose peer vanished (host or printer
+# rebooted) is dropped after ~11 s instead of ~2 h, so it no longer holds the device.
 # fork reopens the device for every connection, so a USB MCU that re-enumerated
 # after FIRMWARE_RESTART is picked up when the host bridge reconnects.
 # Same pattern as github.com/theboleslaw/Klipper-Offload (Qidi AP board).
-ExecStart=/usr/bin/socat -d TCP-LISTEN:${PORT},reuseaddr,fork,tcp-nodelay,keepalive,range=${ALLOW} FILE:${DEVICE},raw,echo=0${SERIAL_OPTS}
+ExecStart=/usr/bin/socat -d TCP-LISTEN:${PORT},reuseaddr,fork,tcp-nodelay,keepalive,keepidle=5,keepintvl=2,keepcnt=3,range=${ALLOW} FILE:${DEVICE},raw,echo=0${SERIAL_OPTS}
 Restart=always
 RestartSec=1
 Nice=-10
