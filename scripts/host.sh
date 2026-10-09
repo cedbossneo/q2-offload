@@ -37,6 +37,12 @@ toggle() {
     sed "${args[@]}"
 }
 
+manifest_set() {
+    grep -v "  $2\$" "$MANIFEST" > "${MANIFEST}.tmp" || true
+    echo "$1  $2" >> "${MANIFEST}.tmp"
+    mv "${MANIFEST}.tmp" "$MANIFEST"
+}
+
 # install_config <rendered-content-file> <dest>: write a file we own, without clobbering
 # local edits. A file changed since we installed it gets the new version as <dest>.new.
 install_config() {
@@ -47,7 +53,10 @@ install_config() {
     if [ -e "$dest" ]; then
         cur_sum="$(sha256sum < "$dest" | cut -d' ' -f1)"
         old_sum="$(awk -v f="$dest" '$2 == f {print $1}' "$MANIFEST")"
-        [ "$cur_sum" = "$new_sum" ] && return 0
+        if [ "$cur_sum" = "$new_sum" ]; then
+            manifest_set "$new_sum" "$dest"
+            return 0
+        fi
         if [ -n "$old_sum" ] && [ "$cur_sum" != "$old_sum" ]; then
             cp "$src" "${dest}.new"
             warn "kept your edited ${dest#"${HOME}"/}; new version saved as ${dest#"${HOME}"/}.new"
@@ -59,9 +68,7 @@ install_config() {
         fi
     fi
     cp "$src" "$dest"
-    grep -v "  ${dest}\$" "$MANIFEST" > "${MANIFEST}.tmp" || true
-    echo "${new_sum}  ${dest}" >> "${MANIFEST}.tmp"
-    mv "${MANIFEST}.tmp" "$MANIFEST"
+    manifest_set "$new_sum" "$dest"
 }
 
 host_packages() {
@@ -118,6 +125,10 @@ host_moonraker() {
     # moonraker.conf is the user's after the first install: never overwritten
     [ -e "${CFG}/moonraker.conf" ] || cp "$tmp" "${CFG}/moonraker.conf"
     rm -f "$tmp"
+    # A component selected after the first install still needs its Moonraker section
+    if has spoolman && ! grep -q '^\[spoolman\]' "${CFG}/moonraker.conf"; then
+        printf '\n[spoolman]\nserver: http://localhost:7912\nsync_rate: 5\n' >> "${CFG}/moonraker.conf"
+    fi
     info "Installing Moonraker"
     local args=(-f -s)
     in_ci && args+=(-z -x)
@@ -212,7 +223,9 @@ host_web() {
     local tmp
     tmp="$(mktemp)"
     render "${Q2_ROOT}/host/nginx/q2-offload.conf" > "$tmp"
-    has fluidd || python3 - "$tmp" <<'EOF'
+    # Without Fluidd the Mainsail server becomes the default one; with neither client the
+    # Fluidd server block stays so autopa is still served
+    has fluidd || ! has mainsail || python3 - "$tmp" <<'EOF'
 import sys,re
 p=sys.argv[1]; s=open(p).read()
 # No Fluidd: drop its server block, Mainsail becomes the default server
@@ -283,7 +296,7 @@ host_services() {
     sudo install -m 644 "$tmp" /etc/systemd/system/q2-serial-bridge@.service
     rm -f "$tmp"
     sudo systemctl daemon-reload
-    sudo systemctl enable klipper q2-serial-bridge@main:7001 q2-serial-bridge@thr:7002 q2-serial-bridge@mmu:7003 >/dev/null 2>&1
+    sudo systemctl enable -q klipper q2-serial-bridge@main:7001 q2-serial-bridge@thr:7002 q2-serial-bridge@mmu:7003
     ok "systemd units (klipper, q2-serial-bridge@main/thr/mmu)"
 }
 
@@ -317,6 +330,11 @@ host_firmware() {
         done
     fi
     (cd "$dir" && sha256sum -c --quiet SHA256SUMS) || die "firmware checksum mismatch in ${dir}"
+    local m mcu
+    for m in main:stm32f407xx thr:stm32f103xe box:stm32f401xc; do
+        mcu="${m#*:}"; m="${m%%:*}"
+        grep -Eq "\"MCU\": *\"${mcu}\"" "${dir}/q2-${m}.dict" || die "q2-${m} is not built for ${mcu}"
+    done
     export FIRMWARE_DIR="$dir"
     ok "firmware ${id}"
 }

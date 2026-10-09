@@ -9,7 +9,9 @@
 #   q2-printer.sh proxies-start | proxies-stop
 #   q2-printer.sh katapult-status <main|thr|box>
 #   q2-printer.sh deploy-katapult <main|thr|box> <deployer.bin>
-#   q2-printer.sh flash <main|thr|box> <firmware.bin>
+#   q2-printer.sh flash <main|thr|box> <firmware-dir>
+#   q2-printer.sh convert <firmware-id> [deploy]   (deploy Katapult if needed, flash all three)
+#   q2-printer.sh setup <klipper-host-ip>          (proxy-install + stock-stop + proxies-start)
 #   q2-printer.sh status
 set -Eeuo pipefail
 
@@ -79,6 +81,7 @@ cmd_backup() {
     systemctl list-unit-files --type=service --state=enabled --no-legend > "${WORK}/enabled-services.txt"
     tar czf "$out" -C "$USER_HOME" --ignore-failed-read printer_data/config \
         q2-offload/enabled-services.txt 2>/dev/null || true
+    [ "$(tar tzf "$out" 2>/dev/null | wc -l)" -gt 1 ] || die "backup ${out} is empty, stopping"
     chown -R "$(stat -c %U "$USER_HOME")": "$WORK"
     info "backup: $out"
 }
@@ -127,7 +130,9 @@ cmd_stock_start() {
 }
 
 cmd_proxies_start() {
-    systemctl enable --now q2-serial-proxy@main q2-serial-proxy@thr q2-serial-proxy@mmu
+    systemctl enable q2-serial-proxy@main q2-serial-proxy@thr q2-serial-proxy@mmu
+    # restart, not --now: a running proxy would keep an old ALLOW range
+    systemctl restart q2-serial-proxy@main q2-serial-proxy@thr q2-serial-proxy@mmu
     info "proxies running"
 }
 
@@ -140,13 +145,41 @@ cmd_katapult_status() {
     local m="${1:?main|thr|box}" dev out
     dev="$(katapult_device "$m")"
     [ -n "$dev" ] || die "${m}: no Katapult device (is the MCU in its bootloader?)"
-    if [ "$m" = thr ]; then out="$(flashtool -d "$dev" -b "$THR_BAUD" -s 2>&1)"; else out="$(flashtool -d "$dev" -s 2>&1)"; fi
+    if [ "$m" = thr ]; then
+        out="$(flashtool -d "$dev" -b "$THR_BAUD" -s 2>&1)" || { echo "$out" >&2; die "${m}: flashtool status failed"; }
+    else
+        out="$(flashtool -d "$dev" -s 2>&1)" || { echo "$out" >&2; die "${m}: flashtool status failed"; }
+    fi
     echo "$out"
-    echo "$out" | grep -qi "Application Start: 0x0*${OFFSET[$m]#0x}" \
+    echo "$out" | grep -Eqi "Application Start: 0x0*${OFFSET[$m]#0x}([^0-9a-f]|$)" \
         || die "${m}: Katapult application offset is not ${OFFSET[$m]}, refusing to flash"
     echo "$out" | grep -qi "MCU type: ${MCU_TYPE[$m]}" \
         || die "${m}: Katapult reports another MCU type than ${MCU_TYPE[$m]}"
+    touch "$(katapult_marker "$m")"
     info "${m}: Katapult OK (${OFFSET[$m]}, ${MCU_TYPE[$m]})"
+}
+
+# Nothing may talk to the MCUs while flashing: stock Klipper, the stock UI or our proxies.
+release_devices() {
+    local s
+    cmd_proxies_stop
+    for s in $STOCK_SERVICES; do systemctl stop "$s" 2>/dev/null || true; done
+}
+
+refuse_if_busy() {
+    local dev="$1" holders
+    [ -e "$dev" ] || return 0
+    holders="$(fuser "$dev" 2>/dev/null || true)"
+    [ -z "$holders" ] || die "${dev} is still in use by pid(s)${holders}; stop them first"
+}
+
+wait_katapult() {
+    local m="$1"
+    for _ in $(seq 1 30); do
+        [ -n "$(katapult_device "$m")" ] && return 0
+        sleep 0.5
+    done
+    die "${m}: Katapult did not show up"
 }
 
 # Reboot a running Klipper MCU into Katapult and wait for the bootloader.
@@ -156,6 +189,7 @@ enter_katapult() {
     if [ "$m" != thr ] && [ -n "$dev" ]; then return 0; fi
     dev="$(klipper_device "$m")"
     [ -n "$dev" ] || die "${m}: neither Klipper nor Katapult device found"
+    refuse_if_busy "$dev"
     info "${m}: requesting the bootloader on ${dev}"
     if [ "$m" = thr ]; then
         # A UART has no USB descriptor to wait for: give Katapult a moment to start
@@ -164,16 +198,17 @@ enter_katapult() {
         return 0
     fi
     flashtool -d "$dev" -r
-    for _ in $(seq 1 20); do
-        sleep 0.5
-        [ -n "$(katapult_device "$m")" ] && return 0
-    done
-    die "${m}: Katapult did not show up"
+    wait_katapult "$m"
 }
 
 cmd_flash() {
-    local m="${1:?main|thr|box}" bin="${2:?firmware.bin}" dev
+    local m="${1:?main|thr|box}" fwdir="${2:?firmware dir}" dev bin
+    bin="${fwdir}/${m}/klipper.bin"
     [ -s "$bin" ] || die "missing firmware $bin"
+    [ -s "${fwdir}/${m}/klipper.dict" ] || die "missing ${fwdir}/${m}/klipper.dict"
+    grep -Eq "\"MCU\": *\"${MCU_TYPE[$m]}\"" "${fwdir}/${m}/klipper.dict" \
+        || die "${bin} is not built for ${MCU_TYPE[$m]}, refusing to flash"
+    release_devices
     enter_katapult "$m"
     cmd_katapult_status "$m"
     dev="$(katapult_device "$m")"
@@ -184,22 +219,68 @@ cmd_flash() {
 
 # First conversion from stock: Qidi's own update scripts flash a Katapult deployer while
 # the stock firmware still runs (they read its dictionary to find the reset command).
+# Marker written once Katapult is confirmed on an MCU. After a Klipper flash a USB MCU no
+# longer shows up as Katapult, and its USB name cannot tell our Klipper from Qidi's stock
+# one, so without the marker a resumed conversion would run Qidi's script on our firmware.
+katapult_marker() { echo "${WORK}/katapult-$1"; }
+
+has_katapult() {
+    local m="$1"
+    [ -e "$(katapult_marker "$m")" ] && return 0
+    if [ "$m" = thr ]; then
+        flashtool -d "$THR_DEVICE" -b "$THR_BAUD" -s >/dev/null 2>&1
+    else
+        [ -n "$(katapult_device "$m")" ]
+    fi
+}
+
 cmd_deploy_katapult() {
     local m="${1:?main|thr|box}" bin="${2:?deployer.bin}" box
     [ -s "$bin" ] || die "missing deployer $bin"
-    systemctl stop klipper klipper-mcu 2>/dev/null || true
+    if has_katapult "$m"; then
+        info "${m}: Katapult already installed, skipping the deployer"
+        return 0
+    fi
+    # Qidi's scripts read the dictionary of the running stock firmware: stock Klipper must
+    # not hold the port, and the scripts expect the mks home directory
+    release_devices
+    cd "$USER_HOME"
     case "$m" in
-        main) bash "${USER_HOME}/mcu_update.sh" "$bin" ;;
-        thr)  bash "${USER_HOME}/mcu_update_THR.sh" "$bin" ;;
+        main) HOME="$USER_HOME" bash "${USER_HOME}/mcu_update.sh" "$bin" ;;
+        thr)  HOME="$USER_HOME" bash "${USER_HOME}/mcu_update_THR.sh" "$bin" ;;
         box)
             box="$(one_device '/dev/serial/by-id/usb-Klipper_QIDI_BOX_V2*-if00')"
             [ -n "$box" ] || box="$(klipper_device box)"
             [ -n "$box" ] || die "Qidi Box not found (usb-Klipper_QIDI_BOX_V2* or usb-Klipper_stm32f401xc*)"
-            bash "${USER_HOME}/mcu_update_BOX_to_v2.sh" "$bin" "$box"
+            HOME="$USER_HOME" bash "${USER_HOME}/mcu_update_BOX_to_v2.sh" "$bin" "$box"
             ;;
     esac
-    sleep 3
+    if [ "$m" = thr ]; then sleep 2; else wait_katapult "$m"; fi
     cmd_katapult_status "$m"
+}
+
+# Whole firmware phase in one root session (one sudo password prompt)
+cmd_convert() {
+    local id="${1:?firmware id}" deploy="${2:-}" m file
+    if [ "$deploy" = deploy ]; then
+        for m in main thr box; do
+            file=mcu; [ "$m" = thr ] && file=thr; [ "$m" = box ] && file=mmu
+            info "Katapult -> ${m}"
+            cmd_deploy_katapult "$m" "${WORK}/deployer/${file}-deployer.bin"
+        done
+    fi
+    for m in main thr box; do
+        cmd_flash "$m" "${WORK}/firmware"
+    done
+    echo "$id" > "${WORK}/firmware-id"
+    chown "$(stat -c %U "$USER_HOME")": "${WORK}/firmware-id"
+    info "all MCUs on firmware ${id}"
+}
+
+cmd_setup() {
+    cmd_proxy_install "${1:?klipper host ip}"
+    cmd_stock_stop
+    cmd_proxies_start
 }
 
 cmd_status() {
@@ -222,6 +303,8 @@ case "$sub" in
     katapult-status) cmd_katapult_status "$@" ;;
     deploy-katapult) cmd_deploy_katapult "$@" ;;
     flash) cmd_flash "$@" ;;
+    convert) cmd_convert "$@" ;;
+    setup) cmd_setup "$@" ;;
     status) cmd_status ;;
     *) sed -n '2,15p' "$0"; exit 2 ;;
 esac

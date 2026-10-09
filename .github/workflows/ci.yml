@@ -24,7 +24,7 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.sha }}
       - name: shellcheck
-        run: shellcheck -x -S warning install.sh scripts/*.sh printer/q2-printer.sh config/plr/*.sh
+        run: shellcheck -x -S warning install.sh scripts/*.sh printer/q2-printer.sh config/plr/*.sh tests/*/*.sh
       - name: python
         run: python3 -m py_compile scripts/*.py
 
@@ -44,6 +44,22 @@ jobs:
         with:
           name: firmware
           path: dist/
+
+  flash-sim:
+    # The printer-side flash logic against fake devices: first conversion, resumed
+    # conversion (deployers must be skipped), and a swapped image (must be refused)
+    needs: firmware
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: firmware
+          path: dist
+      - name: Simulated flash
+        run: docker run --rm -v "$PWD:/repo:ro" debian:bookworm bash /repo/tests/flash-sim/run.sh /repo /repo/dist
 
   host:
     needs: firmware

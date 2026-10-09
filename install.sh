@@ -14,7 +14,7 @@
 #   --components <list>          comma list among: mainsail,fluidd,spoolman,autopa,printguard
 #                                (default: all)
 #   --build-firmware             build the MCU firmware here instead of downloading it
-#   --yes                        answer yes to plain yes/no questions (never to flashing)
+#   --yes                        answer yes to plain yes/no questions (flashing always asks)
 #   --ci                         CI mode: host software only, no systemd/nginx/docker/printer
 set -Eeuo pipefail
 
@@ -48,9 +48,12 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# Saved answers from a previous run (printer IP, components)
+# Saved answers from a previous run; options given on the command line win
+cli_printer="${PRINTER_IP:-}"; cli_components="${COMPONENTS:-}"
 # shellcheck disable=SC1090
 [ -f "$SETTINGS" ] && . "$SETTINGS"
+[ -n "$cli_printer" ] && PRINTER_IP="$cli_printer"
+[ -n "$cli_components" ] && COMPONENTS="$cli_components"
 
 Q2_ORIGIN="$(git -C "$Q2_ROOT" remote get-url origin 2>/dev/null || echo https://github.com/cedbossneo/q2-offload.git)"
 Q2_GITHUB_REPO="$(echo "$Q2_ORIGIN" | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')"
@@ -82,7 +85,7 @@ preflight() {
         read -r -p "Printer IP address: " PRINTER_IP
     fi
     [[ "$PRINTER_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "invalid printer IP '${PRINTER_IP}'"
-    HOST_IP="$(ip -4 route get "$PRINTER_IP" 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p')"
+    HOST_IP="$(ip -4 route get "$PRINTER_IP" 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p' || true)"
     [ -n "$HOST_IP" ] || die "no route to ${PRINTER_IP}"
     save_settings
 }
@@ -127,12 +130,14 @@ EOF
     printer_ssh_key
     printer_push
     proot backup
-    if [ "$(printer_firmware_id)" = "" ]; then
-        if confirm "Is the printer still on Qidi's STOCK firmware (first conversion)?" y; then
-            printer_deploy_katapult
-        fi
+    if [ -z "$(printer_firmware_id)" ] \
+        && confirm "Is this the first conversion from Qidi's STOCK firmware?" y; then
+        # Also safe on a partly converted printer: MCUs already running Katapult are skipped
+        printer_fetch_deployers
+        printer_convert deploy
+    else
+        printer_convert
     fi
-    printer_flash_all
     printer_proxies
     host_start
     wait_ready || true
@@ -150,7 +155,7 @@ do_update() {
         info "MCU firmware changes ($(printer_firmware_id) -> $(firmware_id)): Klipper and MCUs must match"
         printer_ssh_key
         printer_push
-        printer_flash_all
+        printer_convert
         proot proxies-start
     fi
     host_start
@@ -188,6 +193,6 @@ case "$command" in
     update) do_update ;;
     host) preflight; banner; host_install_all; in_ci || host_start ;;
     printer) preflight; printer_ssh_key; printer_push; printer_proxies; printer_helixscreen ;;
-    flash) preflight; printing && die "a print is running"; host_firmware; printer_ssh_key; printer_push; printer_flash_all; proot proxies-start; host_start ;;
+    flash) preflight; printing && die "a print is running"; host_firmware; printer_ssh_key; printer_push; printer_convert; proot proxies-start; host_start ;;
     status) do_status ;;
 esac
