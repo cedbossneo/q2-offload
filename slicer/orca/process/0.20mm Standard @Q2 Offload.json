@@ -1,0 +1,73 @@
+{
+    "bottom_shell_layers": "5",
+    "bridge_acceleration": [
+        "3000"
+    ],
+    "compatible_printers": [
+        "Q2 Offload 0.4 nozzle"
+    ],
+    "default_acceleration": [
+        "5600"
+    ],
+    "enable_prime_tower": "0",
+    "enable_support": "1",
+    "flush_into_infill": "1",
+    "from": "User",
+    "gap_infill_speed": [
+        "200"
+    ],
+    "gcode_label_objects": "1",
+    "inherits": "0.20mm Standard @Qidi Q2",
+    "initial_layer_acceleration": [
+        "1500"
+    ],
+    "inner_wall_line_width": "0.4",
+    "internal_solid_infill_acceleration": [
+        "5500"
+    ],
+    "internal_solid_infill_line_width": "0.4",
+    "line_width": "0.4",
+    "max_volumetric_extrusion_rate_slope": "300",
+    "name": "0.20mm Standard @Q2 Offload",
+    "outer_wall_line_width": "0.4",
+    "outer_wall_speed": [
+        "80"
+    ],
+    "prime_volume": "15",
+    "print_extruder_id": [
+        "1"
+    ],
+    "print_extruder_variant": [
+        "Direct Drive Standard"
+    ],
+    "print_settings_id": "0.20mm Standard @Q2 Offload",
+    "reduce_crossing_wall": "1",
+    "reduce_infill_retraction": "1",
+    "resolution": "0.05",
+    "seam_slope_conditional": "1",
+    "seam_slope_type": "external",
+    "sparse_infill_acceleration": [
+        "5500"
+    ],
+    "sparse_infill_density": "20%",
+    "sparse_infill_line_width": "0.4",
+    "sparse_infill_pattern": "honeycomb",
+    "sparse_infill_speed": [
+        "300"
+    ],
+    "support_line_width": "0.4",
+    "support_style": "organic",
+    "top_surface_acceleration": [
+        "3000"
+    ],
+    "top_surface_line_width": "0.4",
+    "top_surface_speed": [
+        "180"
+    ],
+    "travel_acceleration": [
+        "5600"
+    ],
+    "version": "2.3.1.10",
+    "wall_loops": "4",
+    "wipe_tower_max_purge_speed": "60"
+}

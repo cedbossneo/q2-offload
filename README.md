@@ -63,6 +63,8 @@ the printer config first. It:
 4. installs HelixScreen on the touchscreen and points it at the host.
 
 Then calibrate the machine: [docs/calibration.md](docs/calibration.md).
+Slicer: OrcaSlicer presets for the Q2 + Box are in `slicer/orca/`, see
+[docs/orca-slicer.md](docs/orca-slicer.md).
 
 | Service | URL |
 |---|---|
@@ -119,6 +121,7 @@ The printer board gets a sudo rule that lets its `mks` user run `q2-offload/q2-p
 | `patches/happy-hare/` | fixes not yet merged upstream ([#1368](https://github.com/moggieuk/Happy-Hare/pull/1368), [#1370](https://github.com/moggieuk/Happy-Hare/pull/1370)); dropped automatically once upstream |
 | `firmware/configs/` | Klipper build configs for the three MCUs |
 | `config/klipper/` | Klipper configuration and macros for the Q2 |
+| `slicer/orca/` | OrcaSlicer printer, process and filament presets ([docs/orca-slicer.md](docs/orca-slicer.md)) |
 | `config/happy-hare/` | Happy Hare menuconfig for Qidi Box + Q2, and the settings applied on top of it |
 | `host/`, `printer/` | systemd units, nginx, Moonraker config, printer board helper |
 | `install.sh`, `scripts/` | installer, firmware build, validation, upstream bump |

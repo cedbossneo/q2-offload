@@ -1,0 +1,48 @@
+{
+    "compatible_printers": [
+        "Q2 Offload 0.4 nozzle"
+    ],
+    "filament_cooling_final_speed": [
+        "0"
+    ],
+    "filament_cooling_initial_speed": [
+        "0"
+    ],
+    "filament_cooling_moves": [
+        "0"
+    ],
+    "filament_loading_speed": [
+        "0"
+    ],
+    "filament_loading_speed_start": [
+        "0"
+    ],
+    "filament_multitool_ramming": [
+        "0"
+    ],
+    "filament_settings_id": [
+        "Generic TPU @Q2 Offload"
+    ],
+    "filament_stamping_distance": [
+        "0"
+    ],
+    "filament_stamping_loading_speed": [
+        "0"
+    ],
+    "filament_toolchange_delay": [
+        "0"
+    ],
+    "filament_type": [
+        "TPU"
+    ],
+    "filament_unloading_speed": [
+        "0"
+    ],
+    "filament_unloading_speed_start": [
+        "0"
+    ],
+    "from": "User",
+    "inherits": "Generic TPU @System",
+    "name": "Generic TPU @Q2 Offload",
+    "version": "2.3.1.10"
+}
