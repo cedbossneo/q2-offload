@@ -9,7 +9,7 @@ KLIPPER_REF=461c4e3722c3a897fba1c6b3f0780a5315043842
 # Happy Hare (MMU software for the Qidi Box) + patches/happy-hare
 HAPPY_HARE_REPO=https://github.com/moggieuk/Happy-Hare.git
 HAPPY_HARE_BRANCH=development
-HAPPY_HARE_REF=c951d7855d353026b2c830f153be292f271cfb32
+HAPPY_HARE_REF=d220dbaac75fbb2a9856848f27183ab02acd7663
 
 MOONRAKER_REPO=https://github.com/Arksine/moonraker.git
 MOONRAKER_BRANCH=master
