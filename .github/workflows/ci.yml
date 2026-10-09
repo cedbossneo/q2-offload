@@ -61,7 +61,7 @@ jobs:
           name: firmware
           path: dist
       - name: Simulated flash
-        run: docker run --rm -v "$PWD:/repo:ro" debian:bookworm bash /repo/tests/flash-sim/run.sh /repo /repo/dist
+        run: docker run --rm -v "$PWD:/repo:ro" public.ecr.aws/docker/library/debian:bookworm bash /repo/tests/flash-sim/run.sh /repo /repo/dist
 
   host:
     needs: firmware
