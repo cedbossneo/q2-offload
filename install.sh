@@ -121,10 +121,11 @@ choose_components() {
             if [[ "$sel" == *",${name},"* ]]; then sel="${sel/,${name},/,}"; else sel="${sel}${name},"; fi
         done
     done
-    # Keep the canonical order
+    # Keep the canonical order. An "if", not "&&": with the last component left out the
+    # loop would end on a failed test and set -e would stop the install.
     COMPONENTS=""
     for name in ${ALL_COMPONENTS//,/ }; do
-        [[ "$sel" == *",${name},"* ]] && COMPONENTS="${COMPONENTS:+${COMPONENTS},}${name}"
+        if [[ "$sel" == *",${name},"* ]]; then COMPONENTS="${COMPONENTS:+${COMPONENTS},}${name}"; fi
     done
 }
 
