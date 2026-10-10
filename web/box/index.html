@@ -43,7 +43,8 @@ header h1 { margin: 0; font-size: 20px; }
 .gate.empty { opacity: .5; }
 .swatch { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line); flex: none; }
 .gate .m { font-weight: 600; }
-.gate .n, .gate .d { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px; }
+.gate > div:last-child { min-width: 0; }
+.gate .n, .gate .d { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 form { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; align-items: end; }
 label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
 input { font: inherit; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); width: 100%; }
@@ -193,6 +194,8 @@ async function poll() {
     "mmu=drying_state,drying,gate_status,gate_material,gate_color,gate_filament_name,enabled",
     encodeURIComponent(obj.heater), encodeURIComponent(obj.env),
     "print_stats=state", "gcode_macro%20MMU_KEEP_DRY", "gcode_macro%20_BOX_PRINT_HEAT=active",
+    "gcode_macro%20_BOX_HEATER_GUARD_VARS=paused_target,element_limit,element_resume",
+    "temperature_sensor%20unit0_heater_temp_a", "temperature_sensor%20unit0_heater_temp_b",
   ];
   const r = await api("/printer/objects/query?" + names.join("&"));
   last = { eventtime: r.eventtime, ...r.status };
@@ -252,7 +255,14 @@ function render() {
     if (humidity.length > HUMIDITY_POINTS) humidity.shift();
   }
   $("temp").textContent = heater.temperature != null ? heater.temperature.toFixed(1) + " °C" : "–";
-  $("target").textContent = heater.target ? "heater → " + heater.target + " °C, " + Math.round((heater.power || 0) * 100) + " % power" : "heater off";
+  const guard = s["gcode_macro _BOX_HEATER_GUARD_VARS"] || {};
+  const elements = ["a", "b"].map((x) => (s["temperature_sensor unit0_heater_temp_" + x] || {}).temperature)
+    .filter((t) => t != null);
+  const hottest = elements.length ? Math.max(...elements).toFixed(0) + " °C" : "?";
+  $("target").textContent = guard.paused_target
+    ? "heater paused: elements at " + hottest + ", resumes below " + guard.element_resume + " °C (target " + guard.paused_target + " °C)"
+    : heater.target ? "heater → " + heater.target + " °C, " + Math.round((heater.power || 0) * 100) + " % power, elements " + hottest
+    : "heater off";
 
   const state = $("state");
   state.className = "state" + (drying ? " drying" : printHeat ? " print" : "");

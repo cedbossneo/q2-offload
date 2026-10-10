@@ -106,6 +106,12 @@ Each material has two Box temperatures, with the same materials in both tables:
   running drying cycle finish. `SET_GCODE_VARIABLE MACRO=_BOX_PRINT_HEAT VARIABLE=enable
   VALUE=False` disables it.
 
+The heater regulates on the air sensor, so its elements run much hotter than the air. Like
+the stock firmware's second loop, `_BOX_HEATER_GUARD` cuts the heater while an element is
+above 80 °C and puts the target back below 72 °C; the drying cycle or the print heating
+keeps running, it just warms up more slowly. Above 95 °C (sensor or heater fault) it stops
+everything with an error. The limits are `_BOX_HEATER_GUARD_VARS` in `mmu_keep_dry.cfg`.
+
 In both cases the lowest temperature of the loaded materials wins, so a PLA spool next to a
 PETG one never softens, and the Box never goes above 65 °C (`heater_max_temp`). Spool
 holders and adapters printed in PETG soften above about 60 °C, and cardboard spools need a
