@@ -36,12 +36,21 @@ confirm_phrase() {
 }
 
 # checkout_ref <repo-url> <ref> <dir>: clone if needed, then detach at <ref>.
+# A clone left by another install (a fork, a single-branch or shallow clone) may not have
+# <ref> ("fatal: unable to read tree"): its origin is pointed at <repo-url> and <ref> is
+# fetched by itself when the branches did not bring it.
 checkout_ref() {
-    local url="$1" ref="$2" dir="$3"
+    local url="$1" ref="$2" dir="$3" origin
     if [ ! -d "${dir}/.git" ]; then
         git clone --quiet --filter=blob:none "$url" "$dir"
     fi
+    origin="$(git -C "$dir" remote get-url origin 2>/dev/null || true)"
+    if [ "${origin%.git}" != "${url%.git}" ]; then
+        warn "${dir} comes from ${origin:-no origin}, switching it to ${url}"
+        git -C "$dir" remote set-url origin "$url" 2>/dev/null || git -C "$dir" remote add origin "$url"
+    fi
     git -C "$dir" fetch --quiet origin
+    git -C "$dir" cat-file -e "${ref}^{commit}" 2>/dev/null || git -C "$dir" fetch --quiet origin "$ref"
     git -C "$dir" checkout --quiet --force --detach "$ref"
 }
 
