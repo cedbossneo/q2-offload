@@ -4,7 +4,7 @@
 # Klipper (host + MCU firmware are always built from this exact tree + patches/klipper)
 KLIPPER_REPO=https://github.com/Klipper3d/klipper.git
 KLIPPER_BRANCH=master
-KLIPPER_REF=461c4e3722c3a897fba1c6b3f0780a5315043842
+KLIPPER_REF=e2b99a9159f992169c1ba53029dec020e850cc99
 
 # Happy Hare (MMU software for the Qidi Box) + patches/happy-hare
 HAPPY_HARE_REPO=https://github.com/moggieuk/Happy-Hare.git
@@ -40,7 +40,7 @@ KIAUH_REF=d3e538de7b3163abe27fdf8116a60716d4db31ce
 MAINSAIL_VERSION=v2.19.0
 FLUIDD_VERSION=v1.37.6
 SPOOLMAN_VERSION=v0.27.0
-PRINTGUARD_VERSION=v2.6.1
+PRINTGUARD_VERSION=v2.6.2
 
 # First-time Katapult install without an ST-Link (n3oney/qidi-q2-klipper deployers,
 # flashed through Qidi's own update scripts). Pinned on purpose: never auto-bumped.
