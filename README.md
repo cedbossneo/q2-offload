@@ -71,7 +71,8 @@ Slicer: OrcaSlicer presets for the Q2 + Box are in `slicer/orca/`, see
 | Service | URL |
 |---|---|
 | Fluidd | `http://<host>/` |
-| Mainsail | `http://<host>:81/` (sidebar links to autopa, PrintGuard, Spoolman) |
+| Mainsail | `http://<host>:81/` (sidebar links to the Box page, autopa, PrintGuard, Spoolman) |
+| Box drying | `http://<host>/box/` (humidity, drying cycle, keep-dry settings) |
 | autopa | `http://<host>/autopa/` |
 | Spoolman | `http://<host>:7912/` |
 | PrintGuard | `http://<host>:8000/` |
@@ -120,7 +121,7 @@ The printer board gets a sudo rule that lets its `mks` user run `q2-offload/q2-p
 |---|---|
 | `VERSIONS` | every upstream version used, pinned |
 | `patches/klipper/` | Q2 support on mainline Klipper: GD32F425 USB fix, 200 MHz mainboard, 120 MHz toolhead, toolhead SPI2, MCU temperature, multi-MCU probing timeout, timing tweaks |
-| `patches/happy-hare/` | fixes not yet merged upstream ([#1368](https://github.com/moggieuk/Happy-Hare/pull/1368), [#1370](https://github.com/moggieuk/Happy-Hare/pull/1370)); dropped automatically once upstream |
+| `patches/happy-hare/` | changes not yet merged upstream ([#1368](https://github.com/moggieuk/Happy-Hare/pull/1368), [#1370](https://github.com/moggieuk/Happy-Hare/pull/1370), drying cycle in the status for the Box page); dropped automatically once upstream |
 | `firmware/configs/` | Klipper build configs for the three MCUs |
 | `config/klipper/` | Klipper configuration and macros for the Q2 |
 | `slicer/orca/` | OrcaSlicer printer, process and filament presets ([docs/orca-slicer.md](docs/orca-slicer.md)) |

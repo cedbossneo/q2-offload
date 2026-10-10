@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Qidi Box</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Cpath fill=%22%23e2541b%22 d=%22M12 2C8 8 6 11 6 14a6 6 0 0 0 12 0c0-3-2-6-6-12Z%22/%3E%3C/svg%3E">
+<!-- q2-offload: Box drying page, served by nginx at /box/ next to Fluidd and Mainsail.
+     Talks to Moonraker on the same origin. ?embed=1 hides the header (camera card iframe). -->
+<style>
+:root {
+  --bg: #f4f5f7; --card: #ffffff; --text: #1d2125; --muted: #66707a; --line: #dde1e5;
+  --accent: #2196f3; --hot: #e2541b; --ok: #2e9d5b; --warn: #c98a00; --err: #d32f2f;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121416; --card: #1e2124; --text: #e6e8ea; --muted: #98a1a9; --line: #30353a;
+  }
+}
+:root[data-theme="dark"] { --bg: #121416; --card: #1e2124; --text: #e6e8ea; --muted: #98a1a9; --line: #30353a; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 system-ui, sans-serif; }
+main { max-width: 920px; margin: 0 auto; padding: 16px; display: grid; gap: 12px; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+header h1 { margin: 0; font-size: 20px; }
+.embed header { display: none; }
+.embed main { padding: 8px; }
+.conn { font-size: 13px; color: var(--muted); }
+.conn.bad { color: var(--err); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+.card h2 { margin: 0 0 10px; font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.stat .v { font-size: 28px; font-weight: 600; }
+.stat .s { font-size: 13px; color: var(--muted); }
+.state { display: inline-block; padding: 2px 10px; border-radius: 99px; font-size: 13px; font-weight: 600;
+  background: var(--line); }
+.state.drying { background: var(--hot); color: #fff; }
+.state.print { background: var(--accent); color: #fff; }
+.bar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin-top: 8px; }
+.bar > div { height: 100%; background: var(--hot); width: 0; transition: width .5s; }
+.gates { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.gate { border: 1px solid var(--line); border-radius: 8px; padding: 10px; display: flex; gap: 10px; align-items: center; }
+.gate.empty { opacity: .5; }
+.swatch { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line); flex: none; }
+.gate .m { font-weight: 600; }
+.gate .n, .gate .d { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px; }
+form { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; align-items: end; }
+label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+input { font: inherit; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); width: 100%; }
+button { font: inherit; font-weight: 600; padding: 8px 14px; border: 0; border-radius: 6px; cursor: pointer;
+  background: var(--accent); color: #fff; }
+button.stop { background: var(--err); }
+button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+form .row { grid-column: 1 / -1; }
+.note { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+.msg { font-size: 13px; margin: 8px 0 0; }
+.msg:empty { display: none; }
+.msg.err { color: var(--err); }
+.msg.ok { color: var(--ok); }
+svg { width: 100%; height: 140px; display: block; }
+.legend { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 14px; }
+.legend i { display: inline-block; width: 10px; height: 3px; vertical-align: middle; margin-right: 4px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Qidi Box</h1>
+    <span id="conn" class="conn">connecting…</span>
+  </header>
+
+  <section class="card">
+    <div class="stats">
+      <div class="stat"><div class="v" id="hum">–</div><div class="s">humidity</div></div>
+      <div class="stat"><div class="v" id="temp">–</div><div class="s" id="target">heater</div></div>
+      <div class="stat">
+        <div><span id="state" class="state">–</span></div>
+        <div class="s" id="stateDetail"></div>
+        <div class="bar" id="barWrap" hidden><div id="bar"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Spools</h2>
+    <div class="gates" id="gates"></div>
+    <p class="note" id="auto"></p>
+  </section>
+
+  <section class="card">
+    <h2>Drying</h2>
+    <form id="dryForm">
+      <label>Temperature (°C)<input id="fTemp" type="number" min="20" step="1" placeholder="auto"></label>
+      <label>Duration (h)<input id="fHours" type="number" min="0.5" max="48" step="0.5" placeholder="auto"></label>
+      <label>Stop at humidity (%)<input id="fHum" type="number" min="5" max="80" step="1"></label>
+      <div class="row">
+        <button type="submit" id="start" disabled>Start drying</button>
+        <button type="button" class="stop" id="stop" disabled>Stop</button>
+      </div>
+    </form>
+    <p class="note">Empty fields: Happy Hare picks the lowest temperature and the longest time of the
+      loaded spools, capped at <span id="cap">–</span> °C.</p>
+    <p class="msg" id="dryMsg"></p>
+  </section>
+
+  <section class="card">
+    <h2>Keep dry</h2>
+    <form id="keepForm">
+      <label>Start a cycle above (% RH)<input id="kTrig" type="number" min="5" max="90" step="1"></label>
+      <label>Dry down to (% RH)<input id="kTarget" type="number" min="5" max="80" step="1"></label>
+      <div class="row">
+        <button type="submit">Save</button>
+        <button type="button" class="ghost" id="keepToggle">–</button>
+      </div>
+    </form>
+    <p class="note">Checks the humidity every <span id="kInterval">–</span> min and starts a drying cycle
+      when it rises above the threshold.</p>
+    <p class="msg" id="keepMsg"></p>
+  </section>
+
+  <section class="card">
+    <h2>Last minutes</h2>
+    <svg id="chart" viewBox="0 0 600 140" preserveAspectRatio="none"></svg>
+    <div class="legend">
+      <span><i style="background:var(--hot)"></i>temperature</span>
+      <span><i style="background:var(--muted)"></i>target</span>
+      <span><i style="background:var(--accent)"></i>humidity (since this page was opened)</span>
+      <span id="scale"></span>
+    </div>
+  </section>
+</main>
+
+<script>
+"use strict";
+const POLL_MS = 2000;
+const HUMIDITY_POINTS = 600;            // 20 min at POLL_MS, like Moonraker's temperature store
+const PRINTING = ["printing", "paused"];
+
+const $ = (id) => document.getElementById(id);
+if (new URLSearchParams(location.search).has("embed")) document.body.classList.add("embed");
+
+const obj = { heater: null, env: null };     // Klipper object names, found at start
+let dryingData = {};                         // material -> [temp, minutes]
+let heaterMax = null;
+const humidity = [];                         // [time, %RH] sampled by this page
+let last = null;                             // last status
+
+async function api(path, options) {
+  const r = await fetch(path, options);
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.error ? body.error.message : r.status + " " + r.statusText);
+  return body.result;
+}
+
+function gcode(script) {
+  return api("/printer/gcode/script", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ script }),
+  });
+}
+
+// Happy Hare drying_data is a Python dict literal: {'PLA': (45, 300), ...}
+function parseDryingData(text) {
+  const out = {};
+  for (const m of String(text || "").matchAll(/'([^']+)'\s*:\s*\(\s*([\d.]+)\s*,\s*([\d.]+)\s*\)/g)) {
+    out[m[1].toUpperCase()] = [Number(m[2]), Number(m[3])];
+  }
+  return out;
+}
+
+async function discover() {
+  const q = "/printer/objects/query?mmu_machine&configfile=settings";
+  const s = (await api(q)).status;
+  const unit = s.mmu_machine && s.mmu_machine.unit_0;
+  if (!unit) throw new Error("Happy Hare has no unit");
+  obj.heater = unit.filament_heater;
+  // environment_sensor is the temperature_sensor; the humidity is on the chip object of the same name
+  const envName = (unit.environment_sensor || "").split(" ").pop();
+  const list = (await api("/printer/objects/list")).objects;
+  obj.env = list.find((o) => o.endsWith(" " + envName) && !o.startsWith("temperature_sensor")) || unit.environment_sensor;
+  const settings = s.configfile.settings;
+  dryingData = parseDryingData((settings.mmu_parameters || {}).drying_data);
+  const unitParams = settings["mmu_unit_parameters " + unit.name] || {};
+  heaterMax = Number(unitParams.heater_max_temp) || null;
+  $("cap").textContent = heaterMax || "–";
+  const hum = Number(unitParams.heater_default_dry_humidity);
+  if (hum && !$("fHum").value) $("fHum").value = hum;
+}
+
+async function poll() {
+  const names = [
+    "mmu=drying_state,drying,gate_status,gate_material,gate_color,gate_filament_name,enabled",
+    encodeURIComponent(obj.heater), encodeURIComponent(obj.env),
+    "print_stats=state", "gcode_macro%20MMU_KEEP_DRY", "gcode_macro%20_BOX_PRINT_HEAT=active",
+  ];
+  const r = await api("/printer/objects/query?" + names.join("&"));
+  last = { eventtime: r.eventtime, ...r.status };
+  render();
+}
+
+function fmtDuration(seconds) {
+  const m = Math.max(0, Math.round(seconds / 60));
+  return Math.floor(m / 60) + " h " + String(m % 60).padStart(2, "0");
+}
+
+// What Happy Hare would choose for an automatic cycle with the loaded spools
+function autoPlan(materials) {
+  const known = materials.map((m) => dryingData[m.toUpperCase()]).filter(Boolean);
+  if (!known.length) return null;
+  let temp = Math.min(...known.map((k) => k[0]));
+  if (heaterMax) temp = Math.min(temp, heaterMax);
+  return { temp, minutes: Math.max(...known.map((k) => k[1])) };
+}
+
+function renderGates(mmu) {
+  const loaded = [];
+  $("gates").replaceChildren(...(mmu.gate_status || []).map((status, i) => {
+    const material = (mmu.gate_material[i] || "").trim();
+    const el = document.createElement("div");
+    el.className = "gate" + (status === 0 ? " empty" : "");
+    const sw = document.createElement("div");
+    sw.className = "swatch";
+    sw.style.background = mmu.gate_color[i] ? "#" + mmu.gate_color[i].slice(0, 6) : "transparent";
+    const info = document.createElement("div");
+    const dd = dryingData[material.toUpperCase()];
+    if (status !== 0 && material) loaded.push(material);
+    info.innerHTML = '<div class="m"></div><div class="n"></div><div class="d"></div>';
+    info.children[0].textContent = "T" + i + " · " + (status === 0 ? "empty" : material || "unknown");
+    info.children[1].textContent = status === 0 ? "" : mmu.gate_filament_name[i] || "";
+    info.children[2].textContent = status === 0 ? "" : dd ? "dries at " + dd[0] + " °C, " + dd[1] / 60 + " h" : "no drying data";
+    el.append(sw, info);
+    return el;
+  }));
+  const plan = autoPlan(loaded);
+  $("auto").textContent = plan
+    ? "Automatic cycle for these spools: " + plan.temp + " °C for " + plan.minutes / 60 + " h."
+    : "No loaded spool with drying data: an automatic cycle uses Happy Hare's default.";
+}
+
+function render() {
+  const s = last, mmu = s.mmu || {}, heater = s[obj.heater] || {}, env = s[obj.env] || {};
+  const keep = s["gcode_macro MMU_KEEP_DRY"] || {};
+  const printHeat = (s["gcode_macro _BOX_PRINT_HEAT"] || {}).active;
+  const printing = PRINTING.includes((s.print_stats || {}).state);
+  const drying = (mmu.drying_state || []).some((d) => d === "active" || d === "queued");
+  const cycle = (mmu.drying || [])[0];
+
+  if (env.humidity != null) {
+    $("hum").textContent = Math.round(env.humidity) + " %";
+    humidity.push([Date.now(), env.humidity]);
+    if (humidity.length > HUMIDITY_POINTS) humidity.shift();
+  }
+  $("temp").textContent = heater.temperature != null ? heater.temperature.toFixed(1) + " °C" : "–";
+  $("target").textContent = heater.target ? "heater → " + heater.target + " °C, " + Math.round((heater.power || 0) * 100) + " % power" : "heater off";
+
+  const state = $("state");
+  state.className = "state" + (drying ? " drying" : printHeat ? " print" : "");
+  state.textContent = drying ? "Drying" : printHeat ? "Print heating" : "Idle";
+  let detail = "", progress = null;
+  if (drying && cycle) {
+    const left = cycle.end_time - s.eventtime;
+    detail = cycle.temp + " °C, " + fmtDuration(left) + " left";
+    if (cycle.humidity_target != null) detail += ", or until " + cycle.humidity_target + " % RH";
+    progress = 1 - left / (cycle.end_time - cycle.start_time);
+  } else if (drying) {
+    detail = "time left not reported by this Happy Hare";
+  } else if (printHeat) {
+    detail = "set by the print for the loaded materials";
+  }
+  $("stateDetail").textContent = detail;
+  $("barWrap").hidden = progress == null;
+  if (progress != null) $("bar").style.width = Math.min(100, Math.max(0, progress * 100)) + "%";
+
+  renderGates(mmu);
+
+  $("start").disabled = drying || printing || !mmu.enabled;
+  $("start").title = printing ? "The Box is managed by the print" : drying ? "A cycle is already running" : "";
+  $("stop").disabled = !drying;
+
+  if (document.activeElement !== $("kTrig") && document.activeElement !== $("kTarget")) {
+    $("kTrig").value = keep.trigger ?? "";
+    $("kTarget").value = keep.target ?? "";
+  }
+  $("kInterval").textContent = keep.interval ? Math.round(keep.interval / 60) : "–";
+  $("keepToggle").textContent = keep.enable ? "On — turn off" : "Off — turn on";
+  $("keepToggle").dataset.enable = keep.enable ? "1" : "0";
+  drawChart();
+}
+
+async function drawChart() {
+  if (drawChart.busy || Date.now() - (drawChart.at || 0) < 10000) return redrawChart();
+  drawChart.busy = true;
+  try {
+    const store = await api("/server/temperature_store");
+    drawChart.data = store[obj.heater];
+    drawChart.at = Date.now();
+  } catch (e) { /* keep the previous curve */ }
+  drawChart.busy = false;
+  redrawChart();
+}
+
+function redrawChart() {
+  const W = 600, H = 140;
+  const data = drawChart.data || { temperatures: [], targets: [] };
+  // Moonraker keeps one point per second, the newest last: that sets the time window
+  const span = Math.max(data.temperatures.length, 60) * 1000;
+  const now = Date.now();
+  const tMax = Math.max(40, ...data.temperatures, ...data.targets) + 5;
+  const x = (t) => ((t - (now - span)) / span * W).toFixed(1);
+  const y = (v, max) => (H - v / max * H).toFixed(1);
+  const series = (values) => values.map((v, i) => [now - (values.length - 1 - i) * 1000, v]);
+  const line = (points, max, color, dash) => points.length < 2 ? "" :
+    '<polyline fill="none" stroke="' + color + '" stroke-width="2"' + (dash ? ' stroke-dasharray="4 4"' : "") +
+    ' points="' + points.map(([t, v]) => x(t) + "," + y(v, max)).join(" ") + '"/>';
+  $("chart").innerHTML =
+    line(series(data.targets), tMax, "var(--muted)", true) +
+    line(series(data.temperatures), tMax, "var(--hot)") +
+    line(humidity.filter(([t]) => t >= now - span), 100, "var(--accent)") +
+    "";
+  $("scale").textContent = "top: " + Math.round(tMax) + " °C, 100 % RH";
+}
+
+function showMsg(el, text, kind) {
+  el.textContent = text;
+  el.className = "msg " + (kind || "");
+}
+
+async function run(el, script, done) {
+  showMsg(el, "Sending " + script + "…");
+  try {
+    await gcode(script);
+    showMsg(el, done, "ok");
+    await poll();
+  } catch (e) {
+    showMsg(el, e.message, "err");
+  }
+}
+
+$("dryForm").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const parts = ["MMU_HEATER DRY=1"];
+  const temp = $("fTemp").value, hours = $("fHours").value, hum = $("fHum").value;
+  if (temp) parts.push("TEMP=" + Number(temp));
+  if (hours) parts.push("TIMER=" + Math.round(Number(hours) * 60));
+  if (hum) parts.push("HUMIDITY=" + Number(hum));
+  run($("dryMsg"), parts.join(" "), "Drying started");
+});
+$("stop").addEventListener("click", () => run($("dryMsg"), "MMU_HEATER STOP=1", "Drying stopped"));
+$("keepForm").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const trig = Number($("kTrig").value), target = Number($("kTarget").value);
+  if (!(target < trig)) return showMsg($("keepMsg"), "The threshold must be above the target humidity", "err");
+  run($("keepMsg"), "MMU_KEEP_DRY TRIGGER=" + trig + " TARGET=" + target, "Saved (until Klipper restarts)");
+});
+$("keepToggle").addEventListener("click", (ev) => {
+  const on = ev.target.dataset.enable !== "1";
+  run($("keepMsg"), "MMU_KEEP_DRY ENABLE=" + (on ? 1 : 0), on ? "Keep dry on" : "Keep dry off");
+});
+
+async function loop() {
+  try {
+    if (!obj.heater) await discover();
+    await poll();
+    $("conn").textContent = "connected";
+    $("conn").className = "conn";
+  } catch (e) {
+    $("conn").textContent = "no connection to Klipper: " + e.message;
+    $("conn").className = "conn bad";
+    obj.heater = null;          // Klipper may have restarted with another config
+  }
+  setTimeout(loop, POLL_MS);
+}
+loop();
+</script>
+</body>
+</html>

@@ -290,6 +290,14 @@ web_client() {
 host_web_clients() {
     if has mainsail; then web_client mainsail mainsail-crew/mainsail "$MAINSAIL_VERSION"; fi
     if has fluidd; then web_client fluidd fluidd-core/fluidd "$FLUIDD_VERSION"; fi
+    host_box_page
+}
+
+# Box drying page, served by nginx at /box/ (the copy keeps it working if the repo moves)
+host_box_page() {
+    { has mainsail || has fluidd; } || return 0
+    install -D -m 644 "${Q2_ROOT}/web/box/index.html" "${DATA}/web/box/index.html"
+    ok "Box drying page /box/"
 }
 
 host_web() {

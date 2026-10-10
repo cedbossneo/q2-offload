@@ -49,6 +49,7 @@ verify_install() {
     local web_port="$FLUIDD_PORT"
     has fluidd || ! has mainsail || web_port="$MAINSAIL_PORT"
     { has fluidd || has mainsail; } && check "Moonraker API through nginx" http_ok "http://localhost:${web_port}/server/info"
+    { has fluidd || has mainsail; } && check "Box drying page /box/" http_ok "http://localhost:${web_port}/box/"
     has autopa && check "autopa" http_ok "http://localhost:${web_port}/autopa/"
     if has spoolman; then
         check "Spoolman :7912" http_ok "http://localhost:7912/api/v1/info"

@@ -87,6 +87,13 @@ NFC: write your spool tags in the OpenSpool format ([docs/spoolman-nfc.md](spool
 
 ## 7. Box drying
 
+The **Box drying** page (`http://<host>/box/`, linked in Mainsail's sidebar) shows the
+humidity, the Box temperature and the loaded spools with their drying temperature, and
+drives the commands below: start a cycle (empty fields = automatic temperature and time for
+the loaded spools), stop it, and set or turn off keep-dry. The time left needs Happy Hare
+patch 0003 (`printer.mmu.drying`, installed by q2-offload). Keep-dry thresholds set there last
+until Klipper restarts; edit `mmu_keep_dry.cfg` to change the defaults.
+
 Each material has two Box temperatures, with the same materials in both tables:
 
 - **drying** (`drying_data` in `config/happy-hare/overrides.cfg`): used by `MMU_HEATER DRY=1`

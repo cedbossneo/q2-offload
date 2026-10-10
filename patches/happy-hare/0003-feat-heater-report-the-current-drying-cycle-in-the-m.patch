@@ -1,0 +1,62 @@
+From 3d81a9257c43d8eb5d7f894e968ba818c5a14491 Mon Sep 17 00:00:00 2001
+From: Cedric Hauber <hauber.c@gmail.com>
+Date: Sat, 10 Oct 2026 15:55:54 +0200
+Subject: [PATCH] feat(heater): report the current drying cycle in the mmu
+ status
+
+printer.mmu.drying lists, per unit, the running cycle (temperature, duration, humidity
+goal, start and end time) or None. Times use the reactor clock of the status eventtime so
+the values stay fixed while the cycle runs and clients compute the time left themselves.
+---
+ extras/mmu/mmu_controller.py               |  7 +++++++
+ extras/mmu/unit/mmu_environment_manager.py | 15 ++++++++++++++-
+ 2 files changed, 21 insertions(+), 1 deletion(-)
+
+diff --git a/extras/mmu/mmu_controller.py b/extras/mmu/mmu_controller.py
+index 594cf395..6d6b95df 100644
+--- a/extras/mmu/mmu_controller.py
++++ b/extras/mmu/mmu_controller.py
+@@ -723,6 +723,13 @@ class MmuController(MmuFilamentMovement):
+         # Merge environment status and fill in units without heater
+         status["drying_state"] = merge_unit_status_list(eventtime, attr="environment_manager", key="drying_state", fill_value=DRYING_STATE_NONE)
+ 
++        # Current drying cycle of each unit (None when not drying), in unit order
++        status["drying"] = [
++            unit.environment_manager.get_status(eventtime)['drying']
++            if getattr(unit, 'environment_manager', None) is not None else None
++            for unit in self.mmu_machine.units
++        ]
++
+         # NFC readers are shared-reader + sparse per-gate (not a flat per-gate list),
+         # so report a per-unit dict list. Only present when readers are configured.
+         nfc_status = []
+diff --git a/extras/mmu/unit/mmu_environment_manager.py b/extras/mmu/unit/mmu_environment_manager.py
+index 3b34d638..528b81f4 100644
+--- a/extras/mmu/unit/mmu_environment_manager.py
++++ b/extras/mmu/unit/mmu_environment_manager.py
+@@ -423,8 +423,21 @@ class MmuEnvironmentManager:
+         We don't duplicate temperature or humidity data here but expect the client to read configuration
+         and look up appropriate heater and environment sensor objects directly
+         """
++        # Times are reactor monotonic, the clock of the 'eventtime' clients get with each status:
++        # remaining = end_time - eventtime. They do not change while the cycle runs, so the
++        # status does not push an update every time it is read.
++        drying = None
++        if self.is_drying():
++            drying = {
++                'temp': self._drying_temp,
++                'time': self._drying_time,
++                'humidity_target': self._drying_humidity_target,
++                'start_time': self._drying_start_time,
++                'end_time': self._drying_end_time,
++            }
+         return {
+-            'drying_state': self._drying_state
++            'drying_state': self._drying_state,
++            'drying': drying,
+         }
+ 
+ 
+-- 
+2.54.0 (Apple Git-157)
+
