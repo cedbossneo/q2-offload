@@ -48,8 +48,12 @@ On the Klipper host, as your normal user:
 ```sh
 git clone https://github.com/cedbossneo/q2-offload.git ~/q2-offload
 cd ~/q2-offload
+git checkout "$(git tag -l 'v*' --sort=-creatordate | grep -v -- -beta | head -1)"  # latest stable
 ./install.sh --printer 192.168.1.50
 ```
+
+Skip the `git checkout` line to install the head of `main` instead (the `latest` channel,
+see [Updates](#updates)).
 
 It first shows a menu of the optional components (Mainsail, Fluidd, Spoolman, autopa,
 PrintGuard; all selected by default, `--components` skips it). The installer asks before
@@ -90,22 +94,38 @@ the repo, then starts `q2-offload.service`, which installs the new Klipper, Happ
 autopa, web clients and containers and restarts Klipper. Progress and errors appear in the
 console and in `logs/q2-offload-update.log`.
 
-- Nothing is applied during a print.
-- If the new Klipper needs the MCUs reflashed, nothing is changed: flashing needs someone at
-  the printer, so the console asks you to run the terminal update below.
+- Nothing is applied during a print: a dialog says how to apply the update afterwards.
+- The MCUs are never flashed from there (flashing needs someone at the printer). If the
+  new Klipper needs them reflashed, everything else is updated, Klipper stays at the
+  version of the flashed firmware, and a dialog gives the command for later:
+  `./install.sh flash`.
 
-**From a terminal** (also the way to update when a flash is needed):
+**Update channels.** The installer asks which versions Moonraker offers (change it later
+with `./install.sh host --channel stable|latest`):
+
+| Channel | Offers | Tags |
+|---|---|---|
+| `stable` (default) | versions tested on a printer and promoted by the maintainer | `vYYYY.MM.DD` |
+| `latest` | every version of `main` that passes CI (Moonraker's `beta` channel) | `vYYYY.MM.DD-beta.N` |
+
+CI tags every passing version of `main` as a beta. To promote one that was tested on a
+printer: Actions → **Promote to stable** → Run workflow, with its beta tag (empty: the
+latest beta), or `gh workflow run promote.yml -f tag=vYYYY.MM.DD-beta.N`.
+
+**From a terminal:**
 
 ```sh
-cd ~/q2-offload && git pull && ./install.sh update
+cd ~/q2-offload && ./install.sh update
 ```
 
-It reflashes the three MCUs when the Klipper version changes (through Katapult, offsets and
-image MCU type checked, typed confirmation), because the host and the MCUs must run the
-same Klipper. Your edits to the installed config files are kept: a changed upstream
-version is written next to them as `*.new`. `printer.cfg` and `moonraker.conf` are yours
-after the first install; settings listed in `config/happy-hare/overrides.cfg` are
-re-applied on every update.
+It applies the version checked out in `~/q2-offload` (the one Moonraker installed; `git
+pull` first to take the head of `main`). When the Klipper version changes it asks whether
+to reflash the three MCUs now (through Katapult, offsets and image MCU type checked, typed
+confirmation), because the host and the MCUs must run the same Klipper; without a flash,
+Klipper is kept until `./install.sh flash`. Your edits to the installed config files are
+kept: a changed upstream version is written next to them as `*.new`. `printer.cfg` and
+`moonraker.conf` are yours after the first install; settings listed in
+`config/happy-hare/overrides.cfg` are re-applied on every update.
 
 Klipper, Happy Hare and autopa are not listed separately in the update manager (they are
 patched, and the firmware must match Klipper). Klipper shows as "dirty/invalid" there:

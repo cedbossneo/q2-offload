@@ -97,3 +97,18 @@ jobs:
         run: |
           tail -100 ~/.config/q2-offload/happy-hare-install.log || true
           ls -la ~/printer_data/config ~/printer_data/config/mmu/base || true
+
+  tag:
+    # Every version of main that passes goes to the "latest" update channel (beta tag).
+    # The daily upstream update tags its own commits (bump.yml).
+    needs: [lint, host, flash-sim]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Beta tag
+        run: scripts/tag-release.sh beta "$GITHUB_SHA"

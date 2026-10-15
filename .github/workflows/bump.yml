@@ -64,6 +64,18 @@ jobs:
           git push origin HEAD:refs/heads/main
           git push origin --delete auto/bump
 
+  tag:
+    # The validated version goes to the "latest" update channel
+    needs: publish
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Beta tag
+        run: scripts/tag-release.sh beta HEAD
+
   release:
     needs: publish
     uses: ./.github/workflows/release.yml

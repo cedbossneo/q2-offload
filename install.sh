@@ -4,9 +4,10 @@
 # Run on the Klipper HOST (Debian 12 / Ubuntu 22.04+, x86_64 or arm64), as your normal user:
 #   ./install.sh                 guided install (host stack, printer conversion, flashing)
 #   ./install.sh update          bring host software and MCU firmware to this repo's VERSIONS
+#                                (asks before flashing; without a flash Klipper is kept)
 #   ./install.sh host            (re)install only the host software
 #   ./install.sh printer         (re)configure only the printer board (proxies, HelixScreen)
-#   ./install.sh flash           reflash the MCUs (Katapult must already be installed)
+#   ./install.sh flash           reflash the MCUs, then bring Klipper to the same version
 #   ./install.sh status          show what is installed and running
 #   ./install.sh check           check that every installed service answers
 #
@@ -14,6 +15,8 @@
 #   --printer <ip>               printer IP address (asked otherwise)
 #   --components <list>          comma list among: mainsail,fluidd,spoolman,autopa,printguard
 #                                (default: all)
+#   --channel <stable|latest>    updates offered by Moonraker: versions promoted as stable
+#                                (default), or every version that passes CI
 #   --build-firmware             build the MCU firmware here instead of downloading it
 #   --yes                        answer yes to plain yes/no questions (flashing always asks)
 #   --ci                         CI mode: host software only, no systemd/nginx/docker/printer
@@ -62,6 +65,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --printer) PRINTER_IP="${2:?}"; shift 2 ;;
         --components) COMPONENTS="${2:?}"; shift 2 ;;
+        --channel) UPDATE_CHANNEL="${2:?}"; shift 2 ;;
         --build-firmware) BUILD_FIRMWARE=1; shift ;;
         --yes|-y) ASSUME_YES=1; shift ;;
         --ci) Q2_CI=1; shift ;;
@@ -73,11 +77,12 @@ while [ $# -gt 0 ]; do
 done
 
 # Saved answers from a previous run; options given on the command line win
-cli_printer="${PRINTER_IP:-}"; cli_components="${COMPONENTS:-}"
+cli_printer="${PRINTER_IP:-}"; cli_components="${COMPONENTS:-}"; cli_channel="${UPDATE_CHANNEL:-}"
 # shellcheck disable=SC1090
 [ -f "$SETTINGS" ] && . "$SETTINGS"
 [ -n "$cli_printer" ] && PRINTER_IP="$cli_printer"
 [ -n "$cli_components" ] && COMPONENTS="$cli_components"
+[ -n "$cli_channel" ] && UPDATE_CHANNEL="$cli_channel"
 
 Q2_ORIGIN="$(git -C "$Q2_ROOT" remote get-url origin 2>/dev/null || echo https://github.com/cedbossneo/q2-offload.git)"
 Q2_GITHUB_REPO="$(echo "$Q2_ORIGIN" | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')"
@@ -89,7 +94,29 @@ save_settings() {
 PRINTER_IP=${PRINTER_IP}
 HOST_IP=${HOST_IP}
 COMPONENTS=${COMPONENTS}
+UPDATE_CHANNEL=${UPDATE_CHANNEL}
 EOF
+}
+
+# Update channel, asked on an interactive install. Installs from before the channels
+# followed every version of main: they get "latest", the closest to that.
+choose_channel() {
+    local reply
+    if [ "$command" = install ] && [ -z "$cli_channel" ] && [ "${ASSUME_YES:-0}" != 1 ] \
+        && [ -t 0 ] && ! in_ci && [ ! -f "$SETTINGS" ]; then
+        printf '\n%sUpdates offered in Mainsail/Fluidd%s\n' "${C_INFO}" "${C_OFF}"
+        echo "  1) stable: versions tested on a printer by the maintainer (recommended)"
+        echo "  2) latest: every version that passes the automatic tests"
+        read -r -p "Choice [1]: " reply
+        [ "$reply" = 2 ] && UPDATE_CHANNEL=latest
+    fi
+    if [ -z "${UPDATE_CHANNEL:-}" ]; then
+        if [ -f "$SETTINGS" ]; then UPDATE_CHANNEL=latest; else UPDATE_CHANNEL=stable; fi
+    fi
+    case "$UPDATE_CHANNEL" in
+        stable|latest) ;;
+        *) die "unknown channel '${UPDATE_CHANNEL}' (valid: stable, latest)" ;;
+    esac
 }
 
 # Component menu, shown on an interactive install unless --components was given. Starts
@@ -140,6 +167,7 @@ preflight() {
         choose_components
     fi
     COMPONENTS="${COMPONENTS-$ALL_COMPONENTS}"
+    choose_channel
     local c
     for c in ${COMPONENTS//,/ }; do
         [[ ",${ALL_COMPONENTS}," == *",${c},"* ]] || die "unknown component '${c}' (valid: ${ALL_COMPONENTS})"
@@ -224,22 +252,38 @@ do_update() {
     preflight
     banner
     printing && die "a print is running: update after it ends"
+    KEEP_KLIPPER=0
+    if ! firmware_matches; then
+        cat <<EOF
+
+${C_WARN}This update changes the firmware of the printer boards${C_OFF} ($(printer_firmware_id) -> $(firmware_id)).
+Klipper and the boards must run the same version. Flash now (stay next to the printer,
+you will be asked to type FLASH), or update everything else and keep the current Klipper
+until "./install.sh flash".
+EOF
+        confirm "Flash the printer boards now?" y || KEEP_KLIPPER=1
+    fi
     host_install_all
-    host_firmware
-    if [ "$(printer_firmware_id)" != "$(firmware_id)" ]; then
-        info "MCU firmware changes ($(printer_firmware_id) -> $(firmware_id)): Klipper and MCUs must match"
+    if [ "$KEEP_KLIPPER" = 0 ] && ! firmware_matches; then
+        host_firmware
         printer_prepare
         printer_convert
         proot proxies-start
     fi
     host_start
     wait_ready || true
+    [ "$KEEP_KLIPPER" = 1 ] && warn "Klipper kept at $(klipper_version): run ./install.sh flash to move to $(firmware_id)"
     verify_install
 }
 
-# Unattended update (q2-offload.service), root part. Option chosen for this project:
-# when the MCU firmware would change, nothing is updated and the user is told to run
-# "./install.sh update" in a terminal (flashing needs someone at the printer).
+# Host Klipper and MCU firmware are built from the same tree: without a flash, the host
+# keeps the Klipper it has. CI has no printer.
+firmware_matches() { in_ci || [ "$(printer_firmware_id)" = "$(firmware_id)" ]; }
+klipper_version() { git -C "${HOME}/klipper" describe --tags --always 2>/dev/null || echo unknown; }
+
+# Unattended update (q2-offload.service), root part. Flashing needs someone at the
+# printer, so it never flashes: when the MCU firmware would change, everything else is
+# updated and Klipper stays at the version of the flashed firmware (user part).
 do_update_unattended() {
     [ "$(id -u)" = 0 ] || die "--unattended runs as root (q2-offload.service)"
     exec 9> /run/q2-offload-update.lock
@@ -253,7 +297,7 @@ do_update_unattended() {
     run_user _update-check || rc=$?
     case "$rc" in
         0) ;;
-        10|11) return 0 ;;  # flash needed / print running: already reported
+        11) return 0 ;;  # print running: already reported
         *) notify "update check failed (logs/q2-offload-update.log)"; return 1 ;;
     esac
     notify "updating Klipper, Happy Hare and the web clients, Klipper will restart"
@@ -272,28 +316,42 @@ do_update_unattended() {
         sleep 5
     fi
     wait_ready || true
-    notify "update done (firmware $(firmware_id))"
+    if [ -f "${STATE_DIR}/klipper-kept" ]; then
+        local kept
+        kept="$(cat "${STATE_DIR}/klipper-kept")"
+        rm -f "${STATE_DIR}/klipper-kept"
+        notify_dialog "update done, Klipper kept at its current version" \
+            "Everything was updated except Klipper: the new Klipper needs the printer boards flashed (${kept:-unknown} -> $(firmware_id)), which is never done from here." \
+            "Your printer works as before. To get the new Klipper, when no print is running and you are next to the printer, open a terminal on a computer and run:" \
+            "ssh ${USER}@${HOST_IP}" \
+            "cd ~/q2-offload && ./install.sh flash"
+    else
+        notify "update done (firmware $(firmware_id))"
+    fi
 }
 
-# User part 1: nothing is changed unless the update can complete without flashing
+# User part 1: nothing is changed during a print. Moonraker already shows the new
+# version, so the user is told how to apply it afterwards.
 do_update_check() {
     preflight
     if printing; then
-        notify "a print is running: update not applied, use Update again after the print"
+        notify_dialog "update not applied, a print is running" \
+            "Nothing was changed. After the print, open a terminal on a computer and run:" \
+            "ssh ${USER}@${HOST_IP}" "cd ~/q2-offload && ./install.sh update"
         return 11
-    fi
-    local cur
-    cur="$(printer_firmware_id)"
-    if [ "$cur" != "$(firmware_id)" ]; then
-        notify "this update changes the MCU firmware (${cur:-unknown} -> $(firmware_id)): nothing was changed. Run ./install.sh update in a terminal on the host to update and flash."
-        return 10
     fi
 }
 
 # User part 2: everything under the user's home
 do_update_user() {
     preflight
-    host_klipper
+    rm -f "${STATE_DIR}/klipper-kept"
+    if firmware_matches; then
+        host_klipper
+    else
+        echo "$(printer_firmware_id)" > "${STATE_DIR}/klipper-kept"
+        info "MCU firmware would change: Klipper kept at $(klipper_version)"
+    fi
     host_moonraker_update
     host_extensions
     host_config
@@ -325,7 +383,7 @@ final_notes() {
     cat <<EOF
 
 Next: calibrate this machine (load cell, PID, input shaper, Box gears): docs/calibration.md
-Update later with: git pull && ./install.sh update
+Update later from the update manager in Mainsail/Fluidd, or with ./install.sh update
 EOF
 }
 
@@ -336,7 +394,8 @@ case "$command" in
     _update-user) do_update_user ;;
     host) preflight; banner; host_install_all; in_ci || host_start ;;
     printer) preflight; printer_prepare; printer_proxies; printer_helixscreen ;;
-    flash) preflight; printing && die "a print is running"; host_firmware; printer_prepare; printer_convert; proot proxies-start; host_start ;;
+    flash) preflight; printing && die "a print is running"; host_firmware; printer_prepare; printer_convert
+        host_klipper; proot proxies-start; host_start ;;
     status) do_status ;;
     check) [ -f "$SETTINGS" ] || die "not installed yet"; verify_install ;;
 esac
