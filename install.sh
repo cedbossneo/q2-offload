@@ -160,7 +160,7 @@ preflight() {
 
 banner() {
     cat <<EOF
-${C_INFO}q2-offload${C_OFF} — Klipper ${KLIPPER_REF:0:9}, Happy Hare ${HAPPY_HARE_REF:0:9}, firmware $(firmware_id)
+${C_INFO}q2-offload${C_OFF} — Klipper ${KLIPPER_REF:0:9}, Happy Hare ${HAPPY_HARE_RELEASE}, firmware $(firmware_id)
   printer ${PRINTER_IP}   host ${HOST_IP}   components ${COMPONENTS}
 EOF
 }

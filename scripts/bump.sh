@@ -16,7 +16,7 @@ set_var() {
     echo "${key}: ${old} -> ${new}"
 }
 
-for name in KLIPPER HAPPY_HARE MOONRAKER KATAPULT AUTOPA TIMELAPSE MAINSAIL_CONFIG KIAUH; do
+for name in KLIPPER MOONRAKER KATAPULT AUTOPA TIMELAPSE MAINSAIL_CONFIG KIAUH; do
     repo_var="${name}_REPO"; branch_var="${name}_BRANCH"
     sha="$(git ls-remote "${!repo_var}" "refs/heads/${!branch_var}" | cut -f1)"
     set_var "${name}_REF" "$sha"
@@ -36,6 +36,14 @@ ghcr_has_tag() {
         "https://ghcr.io/v2/${image}/manifests/${tag}"
 }
 
+# Commit of a tag (the commit an annotated tag points to)
+tag_commit() {
+    git ls-remote "$1" "refs/tags/$2" "refs/tags/$2^{}" | sort -k2 | tail -1 | cut -f1
+}
+
+v="$(latest_release moggieuk/Happy-Hare)"
+set_var HAPPY_HARE_RELEASE "$v"
+set_var HAPPY_HARE_REF "$(tag_commit "$HAPPY_HARE_REPO" "$v")"
 set_var MAINSAIL_VERSION "$(latest_release mainsail-crew/mainsail)"
 set_var FLUIDD_VERSION "$(latest_release fluidd-core/fluidd)"
 v="$(latest_release Donkie/Spoolman)"

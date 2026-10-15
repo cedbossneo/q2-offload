@@ -6,9 +6,10 @@ KLIPPER_REPO=https://github.com/Klipper3d/klipper.git
 KLIPPER_BRANCH=master
 KLIPPER_REF=9cb99754c035b90206ef0a02660f674fc9517e9b
 
-# Happy Hare (MMU software for the Qidi Box) + patches/happy-hare
+# Happy Hare (MMU software for the Qidi Box) + patches/happy-hare. Follows its GitHub
+# releases (its main branch moves with every merge): HAPPY_HARE_REF is the release's commit.
 HAPPY_HARE_REPO=https://github.com/moggieuk/Happy-Hare.git
-HAPPY_HARE_BRANCH=development
+HAPPY_HARE_RELEASE=v4.1.0
 HAPPY_HARE_REF=1ac0303c6f83c09f4ae8254dbebf8b4128e637c5
 
 MOONRAKER_REPO=https://github.com/Arksine/moonraker.git
