@@ -34,6 +34,9 @@ die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 [ "$(id -u)" = 0 ] || die "run as root (sudo)"
 mkdir -p "$WORK"
+# The installer copies files here as the user: keep everything theirs, even what an
+# earlier root run created
+chown -R "$(stat -c %U "$USER_HOME")": "$WORK"
 
 # Stock Qidi OS is Debian 11 with stale (or no) package lists, and bullseye is being moved
 # to archive.debian.org. Refresh the lists; if a package is still missing, switch the

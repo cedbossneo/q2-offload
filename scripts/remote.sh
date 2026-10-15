@@ -68,9 +68,13 @@ printer_fetch_deployers() {
     curl -fsSL "$DEPLOYER_URL" -o "${tmp}/deployer.tgz"
     echo "${DEPLOYER_SHA256}  ${tmp}/deployer.tgz" | sha256sum -c --quiet || die "deployer archive checksum mismatch"
     tar xzf "${tmp}/deployer.tgz" -C "$tmp"
+    # The archive is read-only, its top directory too: without this the copies on the
+    # printer cannot be replaced on a second run and the temporary directory cannot be removed
+    chmod -R u+w "$tmp"
     echo "${DEPLOYER_MCU_SHA256}  ${tmp}/mcu-deployer.bin" | sha256sum -c --quiet || die "mcu-deployer checksum mismatch"
     echo "${DEPLOYER_THR_SHA256}  ${tmp}/thr-deployer.bin" | sha256sum -c --quiet || die "thr-deployer checksum mismatch"
     echo "${DEPLOYER_MMU_SHA256}  ${tmp}/mmu-deployer.bin" | sha256sum -c --quiet || die "mmu-deployer checksum mismatch"
+    pssh "rm -f ${PRINTER_WORK}/deployer/*-deployer.bin"
     scp -q "${SSH_OPTS[@]}" "$tmp"/*-deployer.bin "${PRINTER_USER}@${PRINTER_IP}:${PRINTER_WORK}/deployer/"
     rm -rf "$tmp"
 }
