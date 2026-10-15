@@ -224,7 +224,12 @@ host_happy_hare() {
     local hh="${HOME}/Happy-Hare"
     checkout_ref "$HAPPY_HARE_REPO" "$HAPPY_HARE_REF" "$hh"
     apply_patches "$hh" "${Q2_ROOT}/patches/happy-hare" q2-offload
-    render "${Q2_ROOT}/config/happy-hare/mmu_config" > "${hh}/.mmu_config"
+    # Happy Hare refuses a config made for another major.minor: take the checkout's own version
+    local version
+    version="$(sed -n 's/^VERSION = "\([^"]*\)".*/\1/p' "${hh}/extras/mmu/mmu_constants.py")"
+    [ -n "$version" ] || die "could not read the Happy Hare version from ${hh}/extras/mmu/mmu_constants.py"
+    render "${Q2_ROOT}/config/happy-hare/mmu_config" \
+        | sed "s#@HAPPY_HARE_VERSION@#${version}#" > "${hh}/.mmu_config"
     info "Installing Happy Hare (Qidi Box profile)"
     (cd "$hh" && ./install.sh -z -s -y) > "${STATE_DIR}/happy-hare-install.log" 2>&1 \
         || { tail -20 "${STATE_DIR}/happy-hare-install.log"; die "Happy Hare install failed (log: ${STATE_DIR}/happy-hare-install.log)"; }
