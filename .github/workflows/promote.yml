@@ -1,0 +1,28 @@
+name: Promote to stable
+
+# A version tested on a printer goes to the "stable" update channel: its beta tag
+# (vYYYY.MM.DD-beta.N, set by CI) gets a stable tag (vYYYY.MM.DD) on the same commit.
+# Moonraker on "stable" installs then offer it.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Beta tag tested on a printer (empty = the latest beta)
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Stable tag
+        env:
+          BETA_TAG: ${{ inputs.tag }}
+        run: scripts/tag-release.sh stable "$BETA_TAG"

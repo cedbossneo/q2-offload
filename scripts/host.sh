@@ -23,10 +23,31 @@ notify() {
         localhost:7125/printer/gcode/script 2>/dev/null || true
 }
 
+# Same, as a dialog in Mainsail and Fluidd (Klipper prompt protocol): for messages that
+# ask the user to do something. One argument per paragraph, without double quotes or ;
+notify_dialog() {
+    local title="$1" line script
+    shift
+    echo "q2-offload: ${title}"
+    printf '  %s\n' "$@"
+    script="RESPOND TYPE=command MSG=\"action:prompt_begin q2-offload: ${title}\""
+    for line in "$@"; do
+        script+=$'\n'"RESPOND TYPE=command MSG=\"action:prompt_text ${line}\""
+    done
+    script+=$'\n'"RESPOND TYPE=command MSG=\"action:prompt_footer_button Close|RESPOND TYPE=command MSG=action:prompt_end\""
+    script+=$'\n'"RESPOND TYPE=command MSG=\"action:prompt_show\""
+    script+=$'\n'"RESPOND TYPE=command MSG=\"q2-offload: ${title} (details: logs/q2-offload-update.log)\""
+    curl -s -o /dev/null -X POST -G --data-urlencode "script=${script}" \
+        localhost:7125/printer/gcode/script 2>/dev/null || true
+}
+
 # Systemd/nginx/docker are skipped in CI containers
 in_ci() { [ "${Q2_CI:-0}" = 1 ]; }
 
 svc() { in_ci || sudo systemctl "$@"; }
+
+# Moonraker's name for the update channel: "latest" follows its beta tags
+moonraker_channel() { if [ "${UPDATE_CHANNEL:-stable}" = latest ]; then echo beta; else echo stable; fi; }
 
 render() {
     sed -e "s#@HOME@#${HOME}#g" \
@@ -37,6 +58,7 @@ render() {
         -e "s#@Q2_ORIGIN@#${Q2_ORIGIN}#g" \
         -e "s#@FLUIDD_PORT@#${FLUIDD_PORT}#g" \
         -e "s#@MAINSAIL_PORT@#${MAINSAIL_PORT}#g" \
+        -e "s#@Q2_CHANNEL@#$(moonraker_channel)#g" \
         "$1"
 }
 
@@ -179,9 +201,10 @@ moonraker_sysdeps() {
 # Moonraker restarts the services listed in managed_services after updating a repo: the
 # q2-offload entry triggers q2-offload.service, which runs "install.sh update".
 moonraker_conf_migrate() {
-    python3 - "${CFG}/moonraker.conf" "${DATA}/comms/klippy.sock" <<'EOF'
-import re, sys
-path, klippy_sock = sys.argv[1], sys.argv[2]
+    python3 - "${CFG}/moonraker.conf" "${DATA}/comms/klippy.sock" "$(moonraker_channel)" \
+        "${STATE_DIR}/moonraker-changed" <<'EOF'
+import os, re, sys
+path, klippy_sock, channel, changed_flag = sys.argv[1:5]
 s = open(path).read()
 # Without it Moonraker waits on /tmp/klippy_uds and never sees Klipper (configs from older installs)
 srv = re.search(r'^\[server\]\n', s, re.M)
@@ -194,6 +217,19 @@ if m and 'managed_services' not in m.group(1):
     body = body.rstrip('\n') + '\nmanaged_services: q2-offload\n\n'
     s = s[:m.start(1)] + body + s[m.end(1):]
     open(path, 'w').write(s)
+# Update channel chosen in the installer (settings.env): Moonraker reads it at start
+m = re.search(r'^\[update_manager q2-offload\]\n((?:[^\[\n].*\n|\n)*)', s, re.M)
+if m:
+    body = m.group(1)
+    if re.search(r'^channel\s*:', body, re.M):
+        new = re.sub(r'^channel\s*:.*$', 'channel: ' + channel, body, count=1, flags=re.M)
+    else:
+        new = 'channel: %s\n' % channel + body
+    if new != body:
+        s = s[:m.start(1)] + new + s[m.end(1):]
+        open(path, 'w').write(s)
+        os.makedirs(os.path.dirname(changed_flag), exist_ok=True)
+        open(changed_flag, 'w').close()
 EOF
 }
 
@@ -444,7 +480,7 @@ host_firmware() {
 host_install_all() {
     host_packages
     host_dirs
-    host_klipper
+    if [ "${KEEP_KLIPPER:-0}" = 1 ]; then info "Klipper kept at its current version"; else host_klipper; fi
     host_moonraker
     host_extensions
     host_config
