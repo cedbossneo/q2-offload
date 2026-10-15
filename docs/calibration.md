@@ -106,13 +106,22 @@ Each material has two Box temperatures, with the same materials in both tables:
   running drying cycle finish. `SET_GCODE_VARIABLE MACRO=_BOX_PRINT_HEAT VARIABLE=enable
   VALUE=False` disables it.
 
-The heater regulates on the air sensor, so its elements run much hotter than the air. Like
-the stock firmware's second loop, `_BOX_HEATER_GUARD` cuts the heater while an element is
-above 80 °C and puts the target back below 72 °C; the drying cycle or the print heating
-keeps running, it just warms up more slowly. Above 95 °C (sensor or heater fault) it stops
-everything with an error. The limits are `_BOX_HEATER_GUARD_VARS` in `mmu_keep_dry.cfg`.
-
 In both cases the lowest temperature of the loaded materials wins, so a PLA spool next to a
-PETG one never softens, and the Box never goes above 65 °C (`heater_max_temp`). Spool
+PETG one never softens, and the Box never goes above 90 °C (`heater_max_temp`, stock cap). Spool
 holders and adapters printed in PETG soften above about 60 °C, and cardboard spools need a
 holder: print them in ABS, ASA or PC before drying ASA/ABS or printing PA-type filaments.
+
+Like the stock firmware, there are two ways to dry:
+
+- **Spools loaded** (keep-dry, a cycle started with the filaments in place, print heating):
+  no spool rotation, the filament stays parked 80 mm before the hub.
+- **Spools out** (Box page, *Spools out* mode; `MMU_HEATER DRY=1 ROTATE=1 GATES=0,1,2,3`):
+  eject the filaments (`MMU_EJECT GATE=n`) and secure each end to its spool first. Every
+  5 minutes each empty gate retracts 50 mm at 80 mm/s, which turns its spool so it heats
+  evenly (stock behaviour, `heater_rotate_*` in `overrides.cfg`). Gates that still hold
+  filament are never moved. Reload the spools after the cycle; the NFC tags restore them.
+
+The heater runs at full power and regulates on the air sensor, like the stock firmware, so
+its elements run much hotter than the air while it warms up (above 90 °C, then about 60 °C
+once the air is at temperature). As in stock, only their Klipper `max_temp` (130 °C)
+watches them.

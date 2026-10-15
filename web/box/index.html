@@ -43,7 +43,7 @@ header h1 { margin: 0; font-size: 20px; }
 .gate.empty { opacity: .5; }
 .swatch { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line); flex: none; }
 .gate .m { font-weight: 600; }
-.gate > div:last-child { min-width: 0; }
+.gate .info { min-width: 0; flex: 1; }
 .gate .n, .gate .d { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 form { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; align-items: end; }
 label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
@@ -54,6 +54,11 @@ button.stop { background: var(--err); }
 button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
 button:disabled { opacity: .45; cursor: not-allowed; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.modes { display: flex; gap: 0; margin-bottom: 12px; border: 1px solid var(--accent); border-radius: 6px; overflow: hidden; width: fit-content; }
+.modes button { border-radius: 0; background: transparent; color: var(--accent); }
+.modes button.on { background: var(--accent); color: #fff; }
+.gate { flex-wrap: wrap; }
+.gate button { flex-basis: 100%; padding: 4px 10px; font-size: 12px; }
 form .row { grid-column: 1 / -1; }
 .note { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
 .msg { font-size: 13px; margin: 8px 0 0; }
@@ -92,6 +97,14 @@ svg { width: 100%; height: 140px; display: block; }
 
   <section class="card">
     <h2>Drying</h2>
+    <div class="modes" role="group" aria-label="Drying mode">
+      <button type="button" id="modeLoaded" class="on">Spools loaded</button>
+      <button type="button" id="modeOut">Spools out (rotating)</button>
+    </div>
+    <p class="note" id="outHelp" hidden>Like the stock firmware: eject the spools to dry (buttons on
+      the spools above) and secure each filament end to its spool. Every 5 minutes each empty
+      gate turns its spool back a little so it heats evenly. Spools that still hold filament are
+      not moved. Reload them after the cycle.</p>
     <form id="dryForm">
       <label>Temperature (°C)<input id="fTemp" type="number" min="20" step="1" placeholder="auto"></label>
       <label>Duration (h)<input id="fHours" type="number" min="0.5" max="48" step="0.5" placeholder="auto"></label>
@@ -101,8 +114,8 @@ svg { width: 100%; height: 140px; display: block; }
         <button type="button" class="stop" id="stop" disabled>Stop</button>
       </div>
     </form>
-    <p class="note">Empty fields: Happy Hare picks the lowest temperature and the longest time of the
-      loaded spools, capped at <span id="cap">–</span> °C.</p>
+    <p class="note" id="autoHelp">Empty fields: the lowest temperature and the longest time of the
+      spools being dried, capped at <span id="cap">–</span> °C.</p>
     <p class="msg" id="dryMsg"></p>
   </section>
 
@@ -146,7 +159,14 @@ const obj = { heater: null, env: null };     // Klipper object names, found at s
 let dryingData = {};                         // material -> [temp, minutes]
 let heaterMax = null;
 const humidity = [];                         // [time, %RH] sampled by this page
+let mode = "loaded";                         // "loaded" or "out" (spools ejected, rotating)
+// Happy Hare forgets a gate's material when it is ejected: remember it to pick the
+// drying temperature of the spools out (kept across reloads of the page)
+const MATERIALS_KEY = "q2-box-materials";
+let knownMaterials = {};
+try { knownMaterials = JSON.parse(localStorage.getItem(MATERIALS_KEY)) || {}; } catch (e) { /* private window */ }
 let last = null;                             // last status
+let autoPlanNow = null;                      // automatic temperature/time for the current mode
 
 async function api(path, options) {
   const r = await fetch(path, options);
@@ -191,10 +211,9 @@ async function discover() {
 
 async function poll() {
   const names = [
-    "mmu=drying_state,drying,gate_status,gate_material,gate_color,gate_filament_name,enabled",
+    "mmu=drying_state,drying,gate_status,gate_material,gate_color,gate_filament_name,enabled,filament,gate,action",
     encodeURIComponent(obj.heater), encodeURIComponent(obj.env),
     "print_stats=state", "gcode_macro%20MMU_KEEP_DRY", "gcode_macro%20_BOX_PRINT_HEAT=active",
-    "gcode_macro%20_BOX_HEATER_GUARD_VARS=paused_target,element_limit,element_resume",
     "temperature_sensor%20unit0_heater_temp_a", "temperature_sensor%20unit0_heater_temp_b",
   ];
   const r = await api("/printer/objects/query?" + names.join("&"));
@@ -216,29 +235,63 @@ function autoPlan(materials) {
   return { temp, minutes: Math.max(...known.map((k) => k[1])) };
 }
 
-function renderGates(mmu) {
-  const loaded = [];
-  $("gates").replaceChildren(...(mmu.gate_status || []).map((status, i) => {
+function rememberMaterials(mmu) {
+  (mmu.gate_status || []).forEach((status, i) => {
     const material = (mmu.gate_material[i] || "").trim();
+    if (status !== 0 && material) knownMaterials[i] = material;
+  });
+  try { localStorage.setItem(MATERIALS_KEY, JSON.stringify(knownMaterials)); } catch (e) { /* ignore */ }
+}
+
+// Gates a cycle would dry in the current mode, with the material used for the temperature
+function dryingGates(mmu) {
+  return (mmu.gate_status || []).map((status, i) => ({
+    gate: i, empty: status === 0,
+    material: status === 0 ? knownMaterials[i] || "" : (mmu.gate_material[i] || "").trim(),
+  })).filter((g) => (mode === "out" ? g.empty : !g.empty));
+}
+
+function canEject(mmu, gate, printing) {
+  // Never the gate whose filament is in the bowden or the toolhead
+  const inUse = mmu.filament !== "Unloaded" && mmu.gate === gate;
+  return !printing && !inUse && mmu.action === "Idle";
+}
+
+function renderGates(mmu, printing) {
+  rememberMaterials(mmu);
+  $("gates").replaceChildren(...(mmu.gate_status || []).map((status, i) => {
+    const empty = status === 0;
+    const material = empty ? knownMaterials[i] || "" : (mmu.gate_material[i] || "").trim();
     const el = document.createElement("div");
-    el.className = "gate" + (status === 0 ? " empty" : "");
+    el.className = "gate" + (empty && mode === "loaded" ? " empty" : "");
     const sw = document.createElement("div");
     sw.className = "swatch";
-    sw.style.background = mmu.gate_color[i] ? "#" + mmu.gate_color[i].slice(0, 6) : "transparent";
+    sw.style.background = !empty && mmu.gate_color[i] ? "#" + mmu.gate_color[i].slice(0, 6) : "transparent";
     const info = document.createElement("div");
+    info.className = "info";
     const dd = dryingData[material.toUpperCase()];
-    if (status !== 0 && material) loaded.push(material);
     info.innerHTML = '<div class="m"></div><div class="n"></div><div class="d"></div>';
-    info.children[0].textContent = "T" + i + " · " + (status === 0 ? "empty" : material || "unknown");
-    info.children[1].textContent = status === 0 ? "" : mmu.gate_filament_name[i] || "";
-    info.children[2].textContent = status === 0 ? "" : dd ? "dries at " + dd[0] + " °C, " + dd[1] / 60 + " h" : "no drying data";
+    info.children[0].textContent = "T" + i + " · " + (empty ? (material ? material + " (out)" : "empty") : material || "unknown");
+    info.children[1].textContent = empty ? "" : mmu.gate_filament_name[i] || "";
+    info.children[2].textContent = !material ? "" : dd ? "dries at " + dd[0] + " °C, " + dd[1] / 60 + " h" : "no drying data";
     el.append(sw, info);
+    if (mode === "out" && !empty) {
+      const eject = document.createElement("button");
+      eject.type = "button";
+      eject.className = "ghost";
+      eject.textContent = "Eject";
+      eject.disabled = !canEject(mmu, i, printing);
+      eject.title = eject.disabled ? "Filament in use or a print is running" : "MMU_EJECT GATE=" + i;
+      eject.addEventListener("click", () => run($("dryMsg"), "MMU_EJECT GATE=" + i, "T" + i + " ejected: secure the end to its spool"));
+      el.append(eject);
+    }
     return el;
   }));
-  const plan = autoPlan(loaded);
+  const plan = autoPlan(dryingGates(mmu).map((g) => g.material).filter(Boolean));
   $("auto").textContent = plan
-    ? "Automatic cycle for these spools: " + plan.temp + " °C for " + plan.minutes / 60 + " h."
-    : "No loaded spool with drying data: an automatic cycle uses Happy Hare's default.";
+    ? "Automatic cycle for the spools " + (mode === "out" ? "out" : "loaded") + ": " + plan.temp + " °C for " + plan.minutes / 60 + " h."
+    : mode === "out" ? "No spool out yet: eject the spools to dry." : "No loaded spool with drying data: an automatic cycle uses Happy Hare's default.";
+  return plan;
 }
 
 function render() {
@@ -248,6 +301,8 @@ function render() {
   const printing = PRINTING.includes((s.print_stats || {}).state);
   const drying = (mmu.drying_state || []).some((d) => d === "active" || d === "queued");
   const cycle = (mmu.drying || [])[0];
+  // A running cycle that rotates the spools shows the spools-out view
+  if (cycle && cycle.rotate && mode !== "out" && !setMode.touched) return setMode("out");
 
   if (env.humidity != null) {
     $("hum").textContent = Math.round(env.humidity) + " %";
@@ -255,13 +310,10 @@ function render() {
     if (humidity.length > HUMIDITY_POINTS) humidity.shift();
   }
   $("temp").textContent = heater.temperature != null ? heater.temperature.toFixed(1) + " °C" : "–";
-  const guard = s["gcode_macro _BOX_HEATER_GUARD_VARS"] || {};
   const elements = ["a", "b"].map((x) => (s["temperature_sensor unit0_heater_temp_" + x] || {}).temperature)
     .filter((t) => t != null);
   const hottest = elements.length ? Math.max(...elements).toFixed(0) + " °C" : "?";
-  $("target").textContent = guard.paused_target
-    ? "heater paused: elements at " + hottest + ", resumes below " + guard.element_resume + " °C (target " + guard.paused_target + " °C)"
-    : heater.target ? "heater → " + heater.target + " °C, " + Math.round((heater.power || 0) * 100) + " % power, elements " + hottest
+  $("target").textContent = heater.target ? "heater → " + heater.target + " °C, " + Math.round((heater.power || 0) * 100) + " % power, elements " + hottest
     : "heater off";
 
   const state = $("state");
@@ -270,7 +322,7 @@ function render() {
   let detail = "", progress = null;
   if (drying && cycle) {
     const left = cycle.end_time - s.eventtime;
-    detail = cycle.temp + " °C, " + fmtDuration(left) + " left";
+    detail = cycle.temp + " °C, " + fmtDuration(left) + " left" + (cycle.rotate ? ", spools rotating" : "");
     if (cycle.humidity_target != null) detail += ", or until " + cycle.humidity_target + " % RH";
     progress = 1 - left / (cycle.end_time - cycle.start_time);
   } else if (drying) {
@@ -282,10 +334,11 @@ function render() {
   $("barWrap").hidden = progress == null;
   if (progress != null) $("bar").style.width = Math.min(100, Math.max(0, progress * 100)) + "%";
 
-  renderGates(mmu);
-
-  $("start").disabled = drying || printing || !mmu.enabled;
-  $("start").title = printing ? "The Box is managed by the print" : drying ? "A cycle is already running" : "";
+  autoPlanNow = renderGates(mmu, printing);
+  const nothingOut = mode === "out" && !dryingGates(mmu).length;
+  $("start").disabled = drying || printing || !mmu.enabled || nothingOut;
+  $("start").title = printing ? "The Box is managed by the print" : drying ? "A cycle is already running"
+    : nothingOut ? "Eject at least one spool first" : "";
   $("stop").disabled = !drying;
 
   if (document.activeElement !== $("kTrig") && document.activeElement !== $("kTarget")) {
@@ -350,12 +403,30 @@ async function run(el, script, done) {
 $("dryForm").addEventListener("submit", (ev) => {
   ev.preventDefault();
   const parts = ["MMU_HEATER DRY=1"];
-  const temp = $("fTemp").value, hours = $("fHours").value, hum = $("fHum").value;
+  let temp = $("fTemp").value, hours = $("fHours").value;
+  const hum = $("fHum").value;
+  if (mode === "out") {
+    // Happy Hare no longer knows the material of an ejected gate: send the values
+    parts.push("ROTATE=1 GATES=" + dryingGates(last.mmu).map((g) => g.gate).join(","));
+    if (!temp && autoPlanNow) temp = autoPlanNow.temp;
+    if (!hours && autoPlanNow) hours = autoPlanNow.minutes / 60;
+    if (!temp) return showMsg($("dryMsg"), "Unknown material for the spools out: enter a temperature", "err");
+  }
   if (temp) parts.push("TEMP=" + Number(temp));
   if (hours) parts.push("TIMER=" + Math.round(Number(hours) * 60));
   if (hum) parts.push("HUMIDITY=" + Number(hum));
   run($("dryMsg"), parts.join(" "), "Drying started");
 });
+function setMode(next, byUser) {
+  if (byUser) setMode.touched = true;
+  mode = next;
+  $("modeLoaded").classList.toggle("on", mode === "loaded");
+  $("modeOut").classList.toggle("on", mode === "out");
+  $("outHelp").hidden = mode !== "out";
+  if (last) render();
+}
+$("modeLoaded").addEventListener("click", () => setMode("loaded", true));
+$("modeOut").addEventListener("click", () => setMode("out", true));
 $("stop").addEventListener("click", () => run($("dryMsg"), "MMU_HEATER STOP=1", "Drying stopped"));
 $("keepForm").addEventListener("submit", (ev) => {
   ev.preventDefault();

@@ -1,0 +1,120 @@
+From 056f80dc8b727d400b3bb056d287698f56522f22 Mon Sep 17 00:00:00 2001
+From: Cedric Hauber <hauber.c@gmail.com>
+Date: Sat, 10 Oct 2026 21:02:29 +0200
+Subject: [PATCH] feat(heater): configurable spool rotation distance and speed
+
+Units whose gear turns the spool (gear_rotates_spool) always retracted 100 mm at the
+default gear speed. heater_rotate_distance and heater_rotate_speed set that move; the
+QIDI Box stock firmware retracts 50 mm at 80 mm/s every 5 minutes. The drying status
+also tells whether the cycle rotates the spools.
+---
+ config/base/mmu_parameters.cfg             |  4 +++
+ extras/mmu/unit/mmu_environment_manager.py |  5 ++-
+ extras/mmu/unit/mmu_unit_parameters.py     |  2 ++
+ test/test_mmu_drying.py                    | 40 ++++++++++++++++++++++
+ 4 files changed, 50 insertions(+), 1 deletion(-)
+
+diff --git a/config/base/mmu_parameters.cfg b/config/base/mmu_parameters.cfg
+index b4a969a9..6d4c71cf 100644
+--- a/config/base/mmu_parameters.cfg
++++ b/config/base/mmu_parameters.cfg
+@@ -525,6 +525,10 @@ heater_vent_macro           : [[PARAM_HEATER_VENT_MACRO]]		# Optional macro call
+ heater_vent_interval        : [[PARAM_HEATER_VENT_INTERVAL]]			# Interval in minutes between vent openings during a drying cycle, 0=disable venting
+ [% if MMU_HAS_ESPOOLER or MMU_GEAR_ROTATES_SPOOL %]
+ heater_rotate_interval      : [[PARAM_HEATER_ROTATE_INTERVAL]]			# Interval in minutes to rotate filament (requires the filament end attached to spool)
++[% if MMU_GEAR_ROTATES_SPOOL %]
++heater_rotate_distance      : 100			# Gear retract (mm) that turns each spool at every rotation
++heater_rotate_speed         : 0			# Speed (mm/s) of that retract, 0 = default gear speed
++[% endif %]
+ [% endif %]
+ 
+ 
+diff --git a/extras/mmu/unit/mmu_environment_manager.py b/extras/mmu/unit/mmu_environment_manager.py
+index 528b81f4..6d68b004 100644
+--- a/extras/mmu/unit/mmu_environment_manager.py
++++ b/extras/mmu/unit/mmu_environment_manager.py
+@@ -434,6 +434,7 @@ class MmuEnvironmentManager:
+                 'humidity_target': self._drying_humidity_target,
+                 'start_time': self._drying_start_time,
+                 'end_time': self._drying_end_time,
++                'rotate': self._rotate_enabled,
+             }
+         return {
+             'drying_state': self._drying_state,
+@@ -1083,7 +1084,9 @@ class MmuEnvironmentManager:
+             prev_gate_selected = self.mmu.gate_selected
+             for gate in gates:
+                 self.mmu.select_gate(gate)
+-                _,_,_,_ = self.mmu.move_filament("Rotating spool for drying", -100, motor="gear", wait=True)
++                # heater_rotate_speed 0 = the default gear speed
++                _,_,_,_ = self.mmu.move_filament("Rotating spool for drying", -self.mmu_unit.p.heater_rotate_distance,
++                                                 speed=self.mmu_unit.p.heater_rotate_speed or None, motor="gear", wait=True)
+             self.mmu.select_gate(prev_gate_selected)
+ 
+ 
+diff --git a/extras/mmu/unit/mmu_unit_parameters.py b/extras/mmu/unit/mmu_unit_parameters.py
+index bc933e60..cdd57db7 100644
+--- a/extras/mmu/unit/mmu_unit_parameters.py
++++ b/extras/mmu/unit/mmu_unit_parameters.py
+@@ -438,6 +438,8 @@ class MmuUnitParameters(TunableParametersBase):
+         ParamSpec('heater_vent_macro',                'str',      '', section="HEATER",                             guard=_guard_has_heater),
+         ParamSpec('heater_vent_interval',             'float',   0.0, section="HEATER",    limits=dict(minval=0.0), guard=_guard_has_heater, fmt="%.1f"),
+         ParamSpec('heater_rotate_interval',           'float',   5.0, section="HEATER",    limits=dict(minval=1.0), guard=_guard_has_heater, fmt="%.1f"),
++        ParamSpec('heater_rotate_distance',           'float', 100.0, section="HEATER",    limits=dict(above=0.0, maxval=500.0), guard=_guard_has_heater, fmt="%.1f"),
++        ParamSpec('heater_rotate_speed',              'float',   0.0, section="HEATER",    limits=dict(minval=0.0), guard=_guard_has_heater, fmt="%.1f"),
+         ParamSpec('heater_vent_duration',             'float',  10.0, section="HEATER",    limits=dict(above=0.0),  guard=_guard_has_heater, fmt="%.1f"),
+         ParamSpec('heater_vent_run_fan',              'int',       1, section="HEATER",    limits=dict(minval=0, maxval=1), guard=_guard_has_heater),
+         ParamSpec('heater_vent_open_angle',           'float',  90.0, section="HEATER",    limits=dict(minval=0.0, maxval=360.0), guard=_guard_has_heater, fmt="%.1f"),
+diff --git a/test/test_mmu_drying.py b/test/test_mmu_drying.py
+index a24cff25..1c6a97a6 100644
+--- a/test/test_mmu_drying.py
++++ b/test/test_mmu_drying.py
+@@ -103,5 +103,45 @@ class TestDryingVent(unittest.TestCase):
+         self.assertEqual(self.vent.calls[0], '_MMU_VENT UNIT=%s OPEN=1' % self.unit.name)
+ 
+ 
++class TestDryingRotation(unittest.TestCase):
++    """The QIDI Box turns a spool by retracting its gear (gear_rotates_spool)."""
++
++    def setUp(self):
++        self.hh = session('qidi')
++        self.addCleanup(self.hh.close)
++        self.hh.boot()
++        self.unit = self.hh.mmu.mmu_unit(0)
++        self.moves = []
++        real_move = self.hh.mmu.move_filament
++
++        def record(trace_str, dist, speed=None, **kwargs):
++            if trace_str.startswith("Rotating spool"):
++                self.moves.append((self.hh.mmu.gate_selected, dist, speed))
++            return real_move(trace_str, dist, speed=speed, **kwargs)
++        self.hh.mmu.move_filament = record
++        # Gates 0 and 1 ejected (spool end secured), 2 and 3 still hold filament
++        self.hh.run_gcode('MMU_GATE_MAP GATES=0,1 AVAILABLE=0 QUIET=1')
++        self.hh.run_gcode('MMU_GATE_MAP GATES=2,3 AVAILABLE=1 QUIET=1')
++
++    def _rotate_once(self):
++        self.hh.run_gcode('MMU_HEATER DRY=1 TEMP=45 TIMER=60 ROTATE=1 GATES=0,1')
++        self.hh.settle()
++        self.hh.reactor.advance(self.unit.p.heater_rotate_interval * 60 + ENV_CHECK_INTERVAL)
++
++    def test_gates_with_filament_are_never_rotated(self):
++        self._rotate_once()
++        self.assertEqual(sorted({gate for gate, _, _ in self.moves}), [0, 1])
++
++    def test_default_rotation_retracts_100mm_at_gear_speed(self):
++        self._rotate_once()
++        self.assertEqual(self.moves, [(0, -100.0, None), (1, -100.0, None)])
++
++    def test_rotation_distance_and_speed_are_configurable(self):
++        self.unit.p.heater_rotate_distance = 50.0
++        self.unit.p.heater_rotate_speed = 80.0
++        self._rotate_once()
++        self.assertEqual(self.moves, [(0, -50.0, 80.0), (1, -50.0, 80.0)])
++
++
+ if __name__ == '__main__':
+     unittest.main()
+-- 
+2.54.0 (Apple Git-157)
+

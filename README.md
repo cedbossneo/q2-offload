@@ -19,7 +19,7 @@ it forwards the three MCU serial links over the network, runs the touchscreen
 
 Everything is configured: the Klipper configuration for the Q2 (load cell probing, 200 MHz
 mainboard, 120 MHz toolhead), Happy Hare for the Qidi Box (NFC tags → Spoolman, drying
-with a keep-dry watchdog and a heater guard), purge bucket and chute macros, power-loss
+with a keep-dry watchdog and spool rotation), purge bucket and chute macros, power-loss
 recovery, and the web UIs.
 
 > [!CAUTION]
@@ -137,9 +137,6 @@ The printer board gets a sudo rule that lets its `mks` user run `q2-offload/q2-p
   at one CPU with the lowest weight), and do not put the host on Wi-Fi.
 - **Box LEDs are static** like stock: animations send many small commands and made the
   Box MCU shut down over the network.
-- **Box heater is limited to half power** and the element thermistors cut it above 80 °C
-  until they are back under 72 °C (stock caps them at 90 °C): the heater regulates on the
-  air, and at full power the elements reach about 100 °C while the air is still below 50 °C.
 - `[mcu]` serial devices are ptys in `~/printer_data/comms/q2-{main,thr,mmu}`.
 
 ## Credits

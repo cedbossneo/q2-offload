@@ -9,7 +9,7 @@ import jinja2
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CFG = ROOT / "config/klipper/mmu_keep_dry.cfg"
 OVERRIDES = ROOT / "config/happy-hare/overrides.cfg"
-MAX_TEMP = 65.0
+MAX_TEMP = 90.0
 
 
 def load():
