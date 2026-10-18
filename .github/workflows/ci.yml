@@ -28,7 +28,7 @@ jobs:
       - name: python
         run: python3 -m py_compile scripts/*.py
       - name: macros
-        run: sudo apt-get install -y -qq python3-jinja2 >/dev/null && python3 tests/macros/test_box_heat.py
+        run: sudo apt-get install -y -qq python3-jinja2 >/dev/null && for t in tests/macros/test_*.py; do python3 "$t" || exit 1; done
 
   firmware:
     runs-on: ubuntu-24.04
