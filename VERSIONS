@@ -4,7 +4,7 @@
 # Klipper (host + MCU firmware are always built from this exact tree + patches/klipper)
 KLIPPER_REPO=https://github.com/Klipper3d/klipper.git
 KLIPPER_BRANCH=master
-KLIPPER_REF=a08fc79fcfa342e5b95ac02a9a8b271f453523e9
+KLIPPER_REF=ee2c6fb6b00b2b5d097ef70d0868df7d74943b51
 
 # Happy Hare (MMU software for the Qidi Box) + patches/happy-hare. Follows its GitHub
 # releases (its main branch moves with every merge): HAPPY_HARE_REF is the release's commit.
@@ -14,7 +14,7 @@ HAPPY_HARE_REF=1ac0303c6f83c09f4ae8254dbebf8b4128e637c5
 
 MOONRAKER_REPO=https://github.com/Arksine/moonraker.git
 MOONRAKER_BRANCH=master
-MOONRAKER_REF=9e676eba6b02661a4dfa3ec6e7ac3f3504498e6d
+MOONRAKER_REF=b559b9a81161f958a43c2f527b6ad96f73310d5d
 
 # Katapult: only flashtool.py is used (the bootloaders come from the deployers below)
 KATAPULT_REPO=https://github.com/Arksine/katapult.git
@@ -41,7 +41,7 @@ KIAUH_REF=d3e538de7b3163abe27fdf8116a60716d4db31ce
 MAINSAIL_VERSION=v2.19.0
 FLUIDD_VERSION=v1.37.7
 SPOOLMAN_VERSION=v0.27.0
-PRINTGUARD_VERSION=v2.6.2
+PRINTGUARD_VERSION=v2.6.3
 
 # First-time Katapult install without an ST-Link (n3oney/qidi-q2-klipper deployers,
 # flashed through Qidi's own update scripts). Pinned on purpose: never auto-bumped.
