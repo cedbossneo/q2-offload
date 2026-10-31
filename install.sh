@@ -51,8 +51,6 @@ fi
 
 ALL_COMPONENTS=mainsail,fluidd,spoolman,autopa,printguard
 SETTINGS="${STATE_DIR}/settings.env"
-FLUIDD_PORT=80
-MAINSAIL_PORT=81
 
 usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
@@ -84,6 +82,21 @@ cli_printer="${PRINTER_IP:-}"; cli_components="${COMPONENTS:-}"; cli_channel="${
 [ -n "$cli_components" ] && COMPONENTS="$cli_components"
 [ -n "$cli_channel" ] && UPDATE_CHANNEL="$cli_channel"
 
+# Web UI ports, saved in settings.env. New installs (and CI, which saves no settings) get
+# Mainsail on 80 and Fluidd on 81. Installs from before the ports were saved (settings.env
+# or the nginx site already there) had Fluidd on 80 and keep it, so bookmarks still work.
+if [ -z "${MAINSAIL_PORT:-}" ] || [ -z "${FLUIDD_PORT:-}" ]; then
+    if [ -f "$SETTINGS" ] || [ -e "$NGINX_SITE" ]; then
+        FLUIDD_PORT=80; MAINSAIL_PORT=81
+    else
+        MAINSAIL_PORT=80; FLUIDD_PORT=81
+    fi
+fi
+case "${MAINSAIL_PORT}:${FLUIDD_PORT}" in
+    80:81|81:80) ;;
+    *) die "MAINSAIL_PORT and FLUIDD_PORT in ${SETTINGS} must be 80 and 81, one each" ;;
+esac
+
 Q2_ORIGIN="$(git -C "$Q2_ROOT" remote get-url origin 2>/dev/null || echo https://github.com/cedbossneo/q2-offload.git)"
 Q2_GITHUB_REPO="$(echo "$Q2_ORIGIN" | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')"
 
@@ -95,6 +108,8 @@ PRINTER_IP=${PRINTER_IP}
 HOST_IP=${HOST_IP}
 COMPONENTS=${COMPONENTS}
 UPDATE_CHANNEL=${UPDATE_CHANNEL}
+MAINSAIL_PORT=${MAINSAIL_PORT}
+FLUIDD_PORT=${FLUIDD_PORT}
 EOF
 }
 
@@ -375,9 +390,9 @@ final_notes() {
     else
         printf '\n%sDone, but some checks failed (see above).%s\n' "${C_WARN}" "${C_OFF}"
     fi
-    has fluidd && echo "  Fluidd      http://${HOST_IP}/"
-    has mainsail && echo "  Mainsail    http://${HOST_IP}:${MAINSAIL_PORT}/"
-    has autopa && echo "  autopa      http://${HOST_IP}/autopa/"
+    has mainsail && echo "  Mainsail    $(web_url "$MAINSAIL_PORT")/"
+    has fluidd && echo "  Fluidd      $(web_url "$FLUIDD_PORT")/"
+    has autopa && echo "  autopa      $(web_url "$(web_port)")/autopa/"
     has spoolman && echo "  Spoolman    http://${HOST_IP}:7912/"
     has printguard && echo "  PrintGuard  http://${HOST_IP}:8000/  (camera: http://${PRINTER_IP}/webcam/?action=stream, printer: http://${HOST_IP})"
     cat <<EOF

@@ -74,12 +74,16 @@ Slicer: OrcaSlicer presets for the Q2 + Box are in `slicer/orca/`, see
 
 | Service | URL |
 |---|---|
-| Fluidd | `http://<host>/` |
-| Mainsail | `http://<host>:81/` (sidebar links to the Box page, autopa, PrintGuard, Spoolman) |
+| Mainsail | `http://<host>/` (sidebar links to the Box page, autopa, PrintGuard, Spoolman) |
+| Fluidd | `http://<host>:81/` |
 | Box drying | `http://<host>/box/` (humidity, drying cycle, keep-dry settings) |
 | autopa | `http://<host>/autopa/` |
 | Spoolman | `http://<host>:7912/` |
 | PrintGuard | `http://<host>:8000/` |
+
+Installs made before Mainsail moved to port 80 keep Fluidd on 80 and Mainsail on 81. To
+switch, set `MAINSAIL_PORT=80` and `FLUIDD_PORT=81` in `~/.config/q2-offload/settings.env`,
+then run `./install.sh host`.
 
 ## Updates
 
