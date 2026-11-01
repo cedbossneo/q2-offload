@@ -97,7 +97,8 @@ the Intel GPU" or "Obico ML API (CPU)").
 ## Coming from PrintGuard
 
 The first update after PrintGuard was replaced removes its container and switches the
-component to `detect`. PrintGuard's data stays in `/srv/printguard` (remove it with
+component to `detect`; updates also remove its images (about 750 MB each) unless another
+container uses them. PrintGuard's data stays in `/srv/printguard` (remove it with
 `sudo rm -r /srv/printguard` once you no longer need it).
 
 ## API

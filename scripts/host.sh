@@ -520,12 +520,21 @@ host_drop_obico_ml_api() {
     ok "Obico ML API removed (failure detection not selected)"
 }
 
-# PrintGuard was the failure detection before detect/: its container goes, /srv/printguard stays
+# PrintGuard was the failure detection before detect/: its container and images go (an image
+# another container still uses stays), /srv/printguard stays
 host_retire_printguard() {
+    local image
     in_ci && return 0
-    command -v docker >/dev/null && sudo docker inspect printguard >/dev/null 2>&1 || return 0
-    sudo docker rm -f printguard >/dev/null
-    warn "PrintGuard removed: failure detection is now the page /detect/ (its data stays in /srv/printguard)"
+    command -v docker >/dev/null || return 0
+    if sudo docker inspect printguard >/dev/null 2>&1; then
+        sudo docker rm -f printguard >/dev/null
+        warn "PrintGuard removed: failure detection is now the page /detect/ (its data stays in /srv/printguard)"
+    fi
+    for image in $(sudo docker images --format '{{.Repository}}:{{.Tag}}' ghcr.io/oliverbravery/printguard); do
+        [ -z "$(sudo docker ps -aq --filter "ancestor=${image}")" ] || continue
+        sudo docker rmi "$image" >/dev/null 2>&1 && ok "PrintGuard image ${image##*:} removed"
+    done
+    return 0
 }
 
 host_services() {

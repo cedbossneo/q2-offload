@@ -105,7 +105,7 @@ errors appear in the console and in `logs/q2-offload-update.log`.
   `./install.sh flash`.
 
 **PrintGuard** was the failure detection until it was replaced by the `detect` component:
-the first update after that removes its container and keeps its data in `/srv/printguard`
+updates remove its container and images and keep its data in `/srv/printguard`
 (see [docs/failure-detection.md](docs/failure-detection.md)).
 
 **Update channels.** The installer asks which versions Moonraker offers (change it later

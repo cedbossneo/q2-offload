@@ -34,9 +34,14 @@ COPY . /app
 
 # OpenVINO instead of CUDA/CPU. The compiled model is cached in /ov-cache (a volume), so only
 # the first start compiles it; OpenCL throttling keeps the CPU from spinning while the GPU works.
+# One thread for what ONNX Runtime still runs itself: left to its default, it pins a thread to
+# every host core and logs an error for each core outside the container's cpuset.
 RUN sed -i "s|providers = \['CUDAExecutionProvider'\] if use_gpu else \['CPUExecutionProvider'\]|providers = [('OpenVINOExecutionProvider', {'device_type': os.environ.get('OV_DEVICE', 'GPU'), 'cache_dir': '/ov-cache', 'enable_opencl_throttling': 'true'})]|" \
         lib/onnx.py \
-    && grep -q OpenVINOExecutionProvider lib/onnx.py
+    && sed -i "s|self.session = onnxruntime.InferenceSession(onnx_path, providers=providers)|options = onnxruntime.SessionOptions(); options.intra_op_num_threads = 1; options.inter_op_num_threads = 1; self.session = onnxruntime.InferenceSession(onnx_path, sess_options=options, providers=providers)|" \
+        lib/onnx.py \
+    && grep -q OpenVINOExecutionProvider lib/onnx.py \
+    && grep -q 'intra_op_num_threads = 1' lib/onnx.py
 
 EXPOSE 3333
 CMD ["gunicorn", "--bind", "0.0.0.0:3333", "--workers", "1", "--timeout", "300", "wsgi"]
