@@ -44,13 +44,13 @@ verify_install() {
     check "Moonraker components loaded" moonraker_no_failed_components
     check "load cell ready for probing" load_cell_ready
     check "Happy Hare enabled" happy_hare_enabled
-    has fluidd && check "Fluidd http://${HOST_IP}:${FLUIDD_PORT}/" http_ok "http://localhost:${FLUIDD_PORT}/"
-    has mainsail && check "Mainsail http://${HOST_IP}:${MAINSAIL_PORT}/" http_ok "http://localhost:${MAINSAIL_PORT}/"
-    local web_port="$FLUIDD_PORT"
-    has fluidd || ! has mainsail || web_port="$MAINSAIL_PORT"
-    { has fluidd || has mainsail; } && check "Moonraker API through nginx" http_ok "http://localhost:${web_port}/server/info"
-    { has fluidd || has mainsail; } && check "Box drying page /box/" http_ok "http://localhost:${web_port}/box/"
-    has autopa && check "autopa" http_ok "http://localhost:${web_port}/autopa/"
+    has mainsail && check "Mainsail $(web_url "$MAINSAIL_PORT")/" http_ok "http://localhost:${MAINSAIL_PORT}/"
+    has fluidd && check "Fluidd $(web_url "$FLUIDD_PORT")/" http_ok "http://localhost:${FLUIDD_PORT}/"
+    local port
+    port="$(web_port)"
+    { has fluidd || has mainsail; } && check "Moonraker API through nginx" http_ok "http://localhost:${port}/server/info"
+    { has fluidd || has mainsail; } && check "Box drying page /box/" http_ok "http://localhost:${port}/box/"
+    has autopa && check "autopa" http_ok "http://localhost:${port}/autopa/"
     if has spoolman; then
         check "Spoolman :7912" http_ok "http://localhost:7912/api/v1/info"
         check "Moonraker connected to Spoolman" spoolman_linked

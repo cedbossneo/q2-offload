@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Mainsail sidebar links (.theme/navi.json): the Box page and the selected q2-offload components.
 
-Usage: navi.py <components> <host-ip> <fluidd-port>
+Usage: navi.py <components> <host-ip> <web-port>
 """
 import json
 import sys
@@ -20,10 +20,10 @@ ICON_SPOOL = ("M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 
 
 def main():
     components = set(sys.argv[1].split(','))
-    host, fluidd_port = sys.argv[2], sys.argv[3]
+    host, web_port = sys.argv[2], sys.argv[3]
     base = "http://%s" % host
     # The Box page and autopa are served by the same nginx as the web clients
-    port = "" if fluidd_port == "80" else ":%s" % fluidd_port
+    port = "" if web_port == "80" else ":%s" % web_port
     links = [{"title": "Box drying", "href": "%s%s/box/" % (base, port), "icon": ICON_WATER}]
     if 'autopa' in components:
         links.append({"title": "AutoPA", "href": "%s%s/autopa/" % (base, port), "icon": ICON_CHART})

@@ -9,8 +9,20 @@ BOX_BOWDEN_LENGTH=763.2
 STATE_DIR="${HOME}/.config/q2-offload"
 MANIFEST="${STATE_DIR}/installed-files.sha256"
 KLIPPY_ENV="${HOME}/klippy-env"
+NGINX_SITE=/etc/nginx/sites-available/q2-offload
 
 has() { [[ ",${COMPONENTS}," == *",$1,"* ]]; }
+
+# Port of the nginx server that also serves the Box page, autopa and the Moonraker API:
+# 80, unless the only web client installed is the one on the other port (see host_nginx)
+web_port() {
+    if has mainsail && ! has fluidd; then echo "$MAINSAIL_PORT"
+    elif has fluidd && ! has mainsail; then echo "$FLUIDD_PORT"
+    else echo 80; fi
+}
+
+# web_url <port>: base URL of the host on that port, without ":80"
+web_url() { if [ "$1" = 80 ]; then echo "http://${HOST_IP}"; else echo "http://${HOST_IP}:$1"; fi; }
 
 # The unattended update runs its root phase as root: sudo is then a no-op
 # (env keeps "sudo VAR=value cmd" working).
@@ -300,7 +312,7 @@ host_config() {
         > "${CFG}/saved_variables.cfg"
     if has mainsail; then
         mkdir -p "${CFG}/.theme"
-        python3 "${Q2_ROOT}/scripts/navi.py" "$COMPONENTS" "$HOST_IP" "$FLUIDD_PORT" > "$tmp"
+        python3 "${Q2_ROOT}/scripts/navi.py" "$COMPONENTS" "$HOST_IP" "$(web_port)" > "$tmp"
         install_config "$tmp" "${CFG}/.theme/navi.json"
     fi
     rm -f "$tmp"
@@ -352,34 +364,32 @@ host_nginx() {
     local tmp
     tmp="$(mktemp)"
     render "${Q2_ROOT}/host/nginx/q2-offload.conf" > "$tmp"
-    # Without Fluidd the Mainsail server becomes the default one; with neither client the
-    # Fluidd server block stays so autopa is still served
-    has fluidd || ! has mainsail || python3 - "$tmp" <<'EOF'
-import sys,re
-p=sys.argv[1]; s=open(p).read()
-# No Fluidd: drop its server block, Mainsail becomes the default server
-blocks=s.split('\nserver {')
-s=blocks[0]+''.join('\nserver {'+b for b in blocks[1:] if 'fluidd' not in b)
-open(p,'w').write(s.replace('listen 81;','listen 81 default_server;'))
+    # Only the servers of the installed clients are kept; with neither client the one on
+    # port 80 stays so autopa is still served. The server on port 80, or else the only one
+    # left, is the default server.
+    python3 - "$tmp" "$COMPONENTS" <<'EOF'
+import re, sys
+p, components = sys.argv[1], sys.argv[2].split(',')
+head, *servers = open(p).read().split('\nserver {')
+kept = [b for b in servers if any('/%s;' % c in b for c in components)] \
+    or [b for b in servers if 'listen 80;' in b]
+default = next((b for b in kept if 'listen 80;' in b), kept[0])
+kept = [re.sub(r'listen (\d+);', r'listen \1 default_server;', b, count=1) if b is default else b
+        for b in kept]
+open(p, 'w').write(head + ''.join('\nserver {' + b for b in kept))
 EOF
-    has mainsail || python3 - "$tmp" <<'EOF'
-import sys
-p=sys.argv[1]; s=open(p).read()
-blocks=s.split('\nserver {')
-open(p,'w').write(blocks[0]+''.join('\nserver {'+b for b in blocks[1:] if 'mainsail' not in b))
-EOF
-    sudo install -m 644 "$tmp" /etc/nginx/sites-available/q2-offload
+    sudo install -m 644 "$tmp" "$NGINX_SITE"
     render "${Q2_ROOT}/host/nginx/q2-offload-common.conf" > "$tmp"
     sudo install -m 644 "$tmp" /etc/nginx/q2-offload-common.conf
     rm -f "$tmp"
-    sudo ln -sfn /etc/nginx/sites-available/q2-offload /etc/nginx/sites-enabled/q2-offload
+    sudo ln -sfn "$NGINX_SITE" /etc/nginx/sites-enabled/q2-offload
     sudo rm -f /etc/nginx/sites-enabled/default
     sudo nginx -t -q || die "nginx configuration test failed"
     svc enable nginx
     svc reload nginx || svc restart nginx
     # nginx (www-data) must be able to read the web clients and autopa in $HOME
     chmod o+x "$HOME"
-    ok "nginx: Fluidd :${FLUIDD_PORT}, Mainsail :${MAINSAIL_PORT}"
+    ok "nginx: Mainsail :${MAINSAIL_PORT}, Fluidd :${FLUIDD_PORT}"
 }
 
 host_spoolman() {
