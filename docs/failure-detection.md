@@ -59,12 +59,30 @@ Warnings and pauses also show in the Mainsail / Fluidd console.
 | Part | Where | Notes |
 |---|---|---|
 | `q2-detect` | systemd service, `~/q2-detect-env`, code in `detect/` | port 7130 on localhost, served by nginx at `/detect/api/`; nice 10 |
-| Obico's ML API | Docker container `obico-ml-api`, host network | port 3333 on localhost only; Obico's own image (`ghcr.io/thespaghettidetective/obico-ml-api-cpu`, x86_64 and arm64) pinned by digest in `VERSIONS`; one CPU at the lowest weight; about 350 MB to download, 1 GB on disk |
+| Obico's ML API | Docker container `obico-ml-api`, host network | port 3333 on localhost only; on the Intel GPU when there is one, else on one CPU core (see below); lowest CPU weight; about 1 GB on disk |
 | Data | `~/printer_data/detect/` | settings, the printer's usual level, and one folder per print |
 
-Frames never leave the host. Obico's model comes inside Obico's image; q2-offload does not
-redistribute it. A new image reaches users through the daily upstream update, once CI has
-run it.
+Frames never leave the host. A new ML API reaches users through the daily upstream update,
+once CI has run it.
+
+### Intel GPU or CPU
+
+The installer picks the ML API image for the host:
+
+- **x86_64 with an Intel GPU** (most mini PCs: N100, N5095, NUC...): q2-offload's build,
+  `ghcr.io/cedbossneo/obico-ml-api-intel`. It is the same obico-server commit and the same
+  model, with ONNX Runtime's OpenVINO provider, so the model runs on the GPU. CI builds it
+  from `detect/ml-api/Containerfile.intel` and runs it before publishing it. The first start
+  compiles the model for the GPU (about 20 s, up to 1.1 GB of memory); a Docker volume
+  (`q2-openvino-cache`) keeps the result, so later starts take a few seconds.
+- **Anything else** (arm64, no Intel GPU, or the GPU image does not start): Obico's own
+  image, `ghcr.io/thespaghettidetective/obico-ml-api-cpu`, pinned by digest in `VERSIONS`.
+
+On a Celeron N5095 the model takes about 6 s of CPU per frame with a one-CPU quota (ONNX
+Runtime's threads wait on each other), 2 s on one dedicated core, and 0.13 s on the GPU with
+the same detections. The container therefore gets one core (the last one) at the lowest
+weight, rather than a CPU quota. The installer says which image it started ("Obico ML API on
+the Intel GPU" or "Obico ML API (CPU)").
 
 ## Troubleshooting
 

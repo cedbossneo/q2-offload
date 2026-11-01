@@ -12,6 +12,7 @@ on:
 permissions:
   contents: write
   issues: write
+  packages: write  # ci.yml publishes the Intel GPU build of Obico's ML API
 
 concurrency:
   group: bump

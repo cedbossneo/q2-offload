@@ -47,6 +47,10 @@ SPOOLMAN_VERSION=v0.27.0
 OBICO_ML_API_IMAGE=ghcr.io/thespaghettidetective/obico-ml-api-cpu
 OBICO_ML_API_DIGEST=sha256:e1b1c5b4cfc517ed884cad24e4a709d31b935ea49dab45ff60d31a62f4cb86ee
 OBICO_SERVER_REF=6f938964c63892df2b6d5b68d99ea783fc1a7c78
+# Hosts with an Intel GPU run q2-offload's build of that same commit instead, on the GPU
+# (detect/ml-api/Containerfile.intel, built and published by CI).
+OBICO_SERVER_REPO=https://github.com/TheSpaghettiDetective/obico-server.git
+OBICO_ML_API_INTEL_IMAGE=ghcr.io/cedbossneo/obico-ml-api-intel
 
 # First-time Katapult install without an ST-Link (n3oney/qidi-q2-klipper deployers,
 # flashed through Qidi's own update scripts). Pinned on purpose: never auto-bumped.

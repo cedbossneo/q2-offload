@@ -57,15 +57,24 @@ checkout_ref() {
 # obico_ml_api_image: Obico's ML API image pinned in VERSIONS
 obico_ml_api_image() { echo "${OBICO_ML_API_IMAGE}@${OBICO_ML_API_DIGEST}"; }
 
-# pull_obico_ml_api [prefix...]: download that image, docker run through the prefix (e.g. sudo).
-# Obico publishes it, model included, so q2-offload never redistributes either.
-pull_obico_ml_api() {
-    local i
+# obico_ml_api_intel_image: q2-offload's Intel GPU build of the same obico-server commit. Its tag
+# follows that commit and detect/ml-api/Containerfile.intel
+obico_ml_api_intel_image() {
+    local recipe
+    recipe="$(sha256sum "${Q2_ROOT}/detect/ml-api/Containerfile.intel" | cut -c1-8)"
+    echo "${OBICO_ML_API_INTEL_IMAGE}:${OBICO_SERVER_REF:0:12}-${recipe}"
+}
+
+# pull_image <image> [prefix...]: docker pull with retries, docker run through the prefix (e.g. sudo)
+pull_image() {
+    local image="$1" i
+    shift
     for i in 1 2 3; do
-        "$@" docker pull -q "$(obico_ml_api_image)" >/dev/null && return 0
-        sleep $((i * 10))
+        "$@" docker pull -q "$image" >/dev/null && return 0
+        [ "$i" = 3 ] || sleep $((i * 10))
     done
-    die "could not download Obico's ML API image $(obico_ml_api_image): is ghcr.io reachable?"
+    warn "could not download ${image}: is ghcr.io reachable?"
+    return 1
 }
 
 # apply_patches <git-dir> <patch-dir> <branch>: build <branch> = HEAD + every patch.

@@ -443,33 +443,80 @@ host_detect_env() {
     ok "failure detection service (q2-detect)"
 }
 
-# Root part: Obico's image and its container. The running container is only replaced once the
-# new image is downloaded
+# Root part: Obico's ML API container. On the Intel GPU when the host has one (q2-offload's
+# OpenVINO build of the same commit), else on one CPU core (Obico's image); back to the CPU when
+# the GPU build cannot be downloaded or does not answer
 host_obico_ml_api() {
-    local image old
-    image="$(obico_ml_api_image)"
-    if ! sudo docker image inspect "$image" >/dev/null 2>&1; then
-        info "Downloading Obico's ML API image (about 350 MB)"
-        pull_obico_ml_api sudo
+    local node
+    if node="$(intel_render_node)"; then
+        if ml_api_start "$(obico_ml_api_intel_image)" --device "$node" -v q2-openvino-cache:/ov-cache; then
+            ml_api_prune
+            ok "Obico ML API on the Intel GPU (${node})"
+            return 0
+        fi
+        warn "Obico ML API did not start on the Intel GPU (${node}): running it on the CPU"
     fi
-    if [ "$(sudo docker inspect -f '{{.Config.Image}}' obico-ml-api 2>/dev/null)" != "$image" ]; then
-        sudo docker rm -f obico-ml-api >/dev/null 2>&1 || true
-        # Host network bound to localhost: only q2-detect calls it, and it fetches the frames from
-        # q2-detect at 127.0.0.1:7130. One CPU at the lowest weight, never ahead of Klipper
-        sudo docker run -d --name obico-ml-api --restart unless-stopped --network host \
-            --cpus 1 --cpu-shares 256 --memory 1g "$image" \
-            gunicorn --bind 127.0.0.1:3333 --workers 1 --timeout 120 wsgi >/dev/null
-    fi
-    for old in $(sudo docker images --digests --format '{{.Repository}}@{{.Digest}}' "$OBICO_ML_API_IMAGE"); do
-        [ "$old" = "$image" ] || sudo docker rmi "$old" >/dev/null 2>&1 || true
+    ml_api_start "$(obico_ml_api_image)" || die "Obico ML API did not start: see sudo docker logs obico-ml-api"
+    ml_api_prune
+    ok "Obico ML API (CPU)"
+}
+
+# intel_render_node: the render node of an Intel GPU, on an x86_64 host that has one
+intel_render_node() {
+    local d
+    [ "$(uname -m)" = x86_64 ] || return 1
+    for d in /sys/class/drm/renderD*; do
+        [ "$(cat "${d}/device/vendor" 2>/dev/null)" = 0x8086 ] && { echo "/dev/dri/${d##*/}"; return 0; }
     done
-    ok "Obico ML API"
+    return 1
+}
+
+# ml_api_start <image> [docker run args...]: run the obico-ml-api container on that image and wait
+# until the model answers. The running container is only replaced once the image is downloaded,
+# and only when its image or arguments changed
+ml_api_start() {
+    local image="$1" cpu spec deadline
+    shift
+    # Host network bound to localhost: only q2-detect calls it, and it fetches the frames from
+    # q2-detect at 127.0.0.1:7130. One CPU core at the lowest weight, never ahead of Klipper. A CPU
+    # quota (--cpus 1) instead leaves ONNX Runtime's threads waiting on each other: 3x the CPU time
+    cpu=$(( $(nproc) - 1 ))
+    spec="$(echo "$image $* ${cpu}" | sha256sum | cut -c1-16)"
+    if ! sudo docker image inspect "$image" >/dev/null 2>&1; then
+        info "Downloading Obico's ML API image (${image##*/})"
+        pull_image "$image" sudo || return 1
+    fi
+    if [ "$(sudo docker inspect -f '{{index .Config.Labels "q2.spec"}}' obico-ml-api 2>/dev/null)" != "$spec" ]; then
+        sudo docker rm -f obico-ml-api >/dev/null 2>&1 || true
+        sudo docker run -d --name obico-ml-api --label "q2.spec=${spec}" --restart unless-stopped \
+            --network host --cpuset-cpus "$cpu" --cpu-shares 256 --memory 1500m "$@" "$image" \
+            gunicorn --bind 127.0.0.1:3333 --workers 1 --timeout 300 wsgi >/dev/null
+    fi
+    # The model loads when the worker starts; on the first start OpenVINO compiles it for the GPU
+    deadline=$((SECONDS + 240))
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        curl -sf -m 3 localhost:3333/hc/ >/dev/null 2>&1 && return 0
+        sleep 2
+    done
+    return 1
+}
+
+# ml_api_prune: remove the ML API images the container does not run (all of them without it)
+ml_api_prune() {
+    local keep id
+    keep="$(sudo docker inspect -f '{{.Image}}' obico-ml-api 2>/dev/null || true)"
+    for id in $(sudo docker images -q --no-trunc "$OBICO_ML_API_IMAGE") \
+              $(sudo docker images -q --no-trunc "$OBICO_ML_API_INTEL_IMAGE"); do
+        [ "$id" = "$keep" ] || sudo docker rmi -f "$id" >/dev/null 2>&1 || true
+    done
 }
 
 host_drop_obico_ml_api() {
     in_ci && return 0
     command -v docker >/dev/null && sudo docker inspect obico-ml-api >/dev/null 2>&1 || return 0
     sudo docker rm -f obico-ml-api >/dev/null
+    ml_api_prune
+    sudo docker volume rm q2-openvino-cache >/dev/null 2>&1 || true
     ok "Obico ML API removed (failure detection not selected)"
 }
 
