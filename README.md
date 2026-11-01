@@ -191,5 +191,7 @@ This builds on the work of:
 
 ## License
 
-GPL-3.0. autopa (AGPL-3.0) and Obico's ML API (AGPL-3.0, the image Obico publishes with its
-model) are installed from their own repositories and registry, not redistributed here.
+GPL-3.0. autopa (AGPL-3.0) is installed from its own repository. Obico's ML API (AGPL-3.0) is
+the image Obico publishes, with its model. On hosts with an Intel GPU, it is q2-offload's
+build of the same obico-server commit, model included, published on GHCR. Its source is that
+commit plus `detect/ml-api/Containerfile.intel`.

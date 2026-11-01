@@ -1,0 +1,42 @@
+# Obico's ML API on an Intel GPU: obico-server's ml_api (AGPL-3.0) at OBICO_SERVER_REF with its
+# model, as in Obico's ml_api/Containerfile.cpu, but with ONNX Runtime's OpenVINO provider, so
+# the model runs on the GPU most mini PCs have (N100, N5095, NUC...) instead of the CPU.
+# Built and published by q2-offload's CI (scripts/build-ml-api-intel.sh, context = ml_api/);
+# install.sh pulls it on x86_64 hosts with an Intel GPU.
+# OV_DEVICE picks OpenVINO's device: GPU (default) or CPU (CI runners have no GPU).
+FROM ubuntu:24.04
+
+# intel-opencl-icd: Intel's compute runtime, which OpenVINO drives the GPU through.
+# Ubuntu 24.04's (23.43) still covers older GPUs such as Jasper Lake's.
+RUN apt-get update \
+    && apt-get install --no-install-recommends --assume-yes \
+        python3 python3-venv curl ca-certificates intel-opencl-icd ocl-icd-libopencl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+ENV PATH=/env/bin:$PATH
+RUN python3 -m venv /env \
+    && pip install --no-cache-dir onnxruntime-openvino==1.24.1 opencv-python-headless==4.12.0.88
+
+# newrelic is never imported by the server, and its pinned version does not install on Python 3.12
+COPY requirements.txt ./
+RUN grep -v '^newrelic' requirements.txt > /tmp/requirements.txt \
+    && pip install --no-cache-dir --requirement /tmp/requirements.txt
+
+COPY model/*.url model/*.sha256 /app/model/
+COPY scripts/fetch_verified.sh /usr/local/bin/fetch_verified
+RUN mkdir -p /model_cache/ml_api/onnx \
+    && fetch_verified "$(tr -d '\r' < model/model-weights.onnx.url)" \
+        /model_cache/ml_api/onnx/model-weights.onnx 50000000 \
+        "$(tr -d '\r' < model/model-weights.onnx.sha256)"
+
+COPY . /app
+
+# OpenVINO instead of CUDA/CPU. The compiled model is cached in /ov-cache (a volume), so only
+# the first start compiles it; OpenCL throttling keeps the CPU from spinning while the GPU works.
+RUN sed -i "s|providers = \['CUDAExecutionProvider'\] if use_gpu else \['CPUExecutionProvider'\]|providers = [('OpenVINOExecutionProvider', {'device_type': os.environ.get('OV_DEVICE', 'GPU'), 'cache_dir': '/ov-cache', 'enable_opencl_throttling': 'true'})]|" \
+        lib/onnx.py \
+    && grep -q OpenVINOExecutionProvider lib/onnx.py
+
+EXPOSE 3333
+CMD ["gunicorn", "--bind", "0.0.0.0:3333", "--workers", "1", "--timeout", "300", "wsgi"]

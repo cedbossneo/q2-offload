@@ -3,6 +3,7 @@
 # webcam serves <jpeg>, with frames every 0.5 s. Checks that frames are analysed by the ML API,
 # and with --expect-pause that a print showing a failure gets paused (pause mode, a printer
 # whose long-term mean is already learnt). PYTHON must have detect/requirements.txt installed.
+# ML_API_ARGS goes to the ML API's docker run (e.g. -e OV_DEVICE=CPU).
 # Usage: tests/detect/e2e.sh <ml-api-image> <jpeg> [--expect-pause]
 set -Eeuo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -11,6 +12,7 @@ python="$("${PYTHON:-python3}" -c 'import sys; print(sys.executable)')"
 work="$(mktemp -d)"
 mr=7999; port=7131; frames=40
 pids=()
+read -r -a ml_args <<< "${ML_API_ARGS:-}"
 
 cleanup() {
     for pid in "${pids[@]}"; do kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; done
@@ -24,10 +26,10 @@ field() { "$python" -c "import json, sys; d = json.load(sys.stdin); print(eval(s
 
 # Docker Desktop has no host network: there the ML API reaches the service through the host
 if [ "$(uname)" = Darwin ]; then
-    docker run -d --name q2-detect-e2e-ml -p 127.0.0.1:3333:3333 "$image" >/dev/null
+    docker run -d --name q2-detect-e2e-ml -p 127.0.0.1:3333:3333 ${ml_args[@]+"${ml_args[@]}"} "$image" >/dev/null
     listen=0.0.0.0; frame_base="http://host.docker.internal:${port}"
 else
-    docker run -d --name q2-detect-e2e-ml --network host "$image" \
+    docker run -d --name q2-detect-e2e-ml --network host ${ml_args[@]+"${ml_args[@]}"} "$image" \
         gunicorn --bind 127.0.0.1:3333 --workers 1 --timeout 120 wsgi >/dev/null
     listen=127.0.0.1; frame_base="http://127.0.0.1:${port}"
 fi
