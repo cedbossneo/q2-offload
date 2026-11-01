@@ -70,8 +70,9 @@ once CI has run it.
 The installer picks the ML API image for the host:
 
 - **x86_64 with an Intel GPU** (most mini PCs: N100, N5095, NUC...): q2-offload's build,
-  `ghcr.io/cedbossneo/obico-ml-api-intel`. It is the same obico-server commit and the same
-  model, with ONNX Runtime's OpenVINO provider, so the model runs on the GPU. CI builds it
+  `ghcr.io/cedbossneo/q2-offload/obico-ml-api-intel`, one of this repository's packages. It is
+  the same obico-server commit and the same model, with ONNX Runtime's OpenVINO provider, so
+  the model runs on the GPU. CI builds it
   from `detect/ml-api/Containerfile.intel` and runs it before publishing it. The first start
   compiles the model for the GPU (about 20 s, up to 1.1 GB of memory); a Docker volume
   (`q2-openvino-cache`) keeps the result, so later starts take a few seconds.
