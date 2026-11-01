@@ -29,6 +29,24 @@ jobs:
         run: python3 -m py_compile scripts/*.py
       - name: macros
         run: sudo apt-get install -y -qq python3-jinja2 >/dev/null && for t in tests/macros/test_*.py; do python3 "$t" || exit 1; done
+      - name: failure detection
+        run: |
+          sudo apt-get install -y -qq python3-aiohttp python3-pil >/dev/null
+          python3 -m py_compile detect/q2_detect/*.py tests/detect/*.py
+          for t in tests/detect/test_*.py; do python3 "$t" || exit 1; done
+      - name: pages
+        run: node --test tests/web/*.test.mjs
+
+  detect:
+    # The q2-detect service with Obico's ML API built from the pinned obico-server commit, as
+    # the installer builds it, against a fake Moonraker and camera
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - name: Build the ML API and run end to end
+        run: tests/detect/ci.sh
 
   firmware:
     runs-on: ubuntu-24.04
@@ -101,7 +119,7 @@ jobs:
   tag:
     # Every version of main that passes goes to the "latest" update channel (beta tag).
     # The daily upstream update tags its own commits (bump.yml).
-    needs: [lint, host, flash-sim]
+    needs: [lint, host, flash-sim, detect]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     permissions:

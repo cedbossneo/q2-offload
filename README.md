@@ -13,7 +13,7 @@ it forwards the three MCU serial links over the network, runs the touchscreen
  │                   socat ─────┼── 7003 ──────►│ socat ── USB  ── Qidi Box    │
  │ Moonraker, Happy Hare        │               │ HelixScreen ──► host:7125    │
  │ Mainsail, Fluidd, autopa     │               │ webcam (/webcam/)            │
- │ Spoolman, PrintGuard         │               └──────────────────────────────┘
+ │ Spoolman, failure detection  │               └──────────────────────────────┘
  └──────────────────────────────┘
 ```
 
@@ -35,8 +35,8 @@ recovery, and the web UIs.
 - A Qidi Q2 with a Qidi Box (one unit), on the stock Qidi OS, reachable over SSH
   (`mks` / `makerbase`).
 - A Klipper host running **Debian 12 or Ubuntu 22.04+** (x86_64 or arm64), on a wired
-  link to the printer if possible. Any recent mini PC is plenty; PrintGuard alone
-  uses about one CPU core.
+  link to the printer if possible. Any recent mini PC is plenty; failure detection uses
+  about a second of one CPU core every 10 s while printing, and 2 GB of disk.
 - Both machines on the same LAN. If your router filters between VLANs, the host must
   reach the printer on TCP 7001–7003 and 80 (camera), and the printer must reach the
   host on TCP 7125 (touchscreen).
@@ -56,11 +56,11 @@ Skip the `git checkout` line to install the head of `main` instead (the `latest`
 see [Updates](#updates)).
 
 It first shows a menu of the optional components (Mainsail, Fluidd, Spoolman, autopa,
-PrintGuard; all selected by default, `--components` skips it). The installer asks before
+failure detection; all selected by default, `--components` skips it). The installer asks before
 each step that touches the printer, and makes a backup of the printer config first. It:
 
 1. installs Klipper, Moonraker, Happy Hare and the components on the host
-   (`--components mainsail,fluidd,spoolman,autopa,printguard`, all by default);
+   (`--components mainsail,fluidd,spoolman,autopa,detect`, all by default);
 2. on a stock printer, installs Katapult on the three MCUs with Qidi's own update
    scripts (no ST-Link needed), then flashes Klipper, checking the Katapult application
    offset of each MCU before writing;
@@ -74,12 +74,12 @@ Slicer: OrcaSlicer presets for the Q2 + Box are in `slicer/orca/`, see
 
 | Service | URL |
 |---|---|
-| Mainsail | `http://<host>/` (sidebar links to the Box page, autopa, PrintGuard, Spoolman) |
+| Mainsail | `http://<host>/` (sidebar links to the Box page, failure detection, autopa, Spoolman) |
 | Fluidd | `http://<host>:81/` |
 | Box drying | `http://<host>/box/` (humidity, drying cycle, keep-dry settings) |
+| Failure detection | `http://<host>/detect/` (live score, print history, settings: [docs/failure-detection.md](docs/failure-detection.md)) |
 | autopa | `http://<host>/autopa/` |
 | Spoolman | `http://<host>:7912/` |
-| PrintGuard | `http://<host>:8000/` |
 
 Installs made before Mainsail moved to port 80 keep Fluidd on 80 and Mainsail on 81. To
 switch, set `MAINSAIL_PORT=80` and `FLUIDD_PORT=81` in `~/.config/q2-offload/settings.env`,
@@ -95,14 +95,18 @@ its firmware published as a release.
 
 **From Mainsail or Fluidd:** update **q2-offload** in the update manager. Moonraker pulls
 the repo, then starts `q2-offload.service`, which installs the new Klipper, Happy Hare,
-autopa, web clients and containers and restarts Klipper. Progress and errors appear in the
-console and in `logs/q2-offload-update.log`.
+autopa, web clients, failure detection and containers and restarts Klipper. Progress and
+errors appear in the console and in `logs/q2-offload-update.log`.
 
 - Nothing is applied during a print: a dialog says how to apply the update afterwards.
 - The MCUs are never flashed from there (flashing needs someone at the printer). If the
   new Klipper needs them reflashed, everything else is updated, Klipper stays at the
   version of the flashed firmware, and a dialog gives the command for later:
   `./install.sh flash`.
+
+**PrintGuard** was the failure detection until it was replaced by the `detect` component:
+the first update after that removes its container and keeps its data in `/srv/printguard`
+(see [docs/failure-detection.md](docs/failure-detection.md)).
 
 **Update channels.** The installer asks which versions Moonraker offers (change it later
 with `./install.sh host --channel stable|latest`):
@@ -151,14 +155,16 @@ The printer board gets a sudo rule that lets its `mks` user run `q2-offload/q2-p
 | `slicer/orca/` | OrcaSlicer printer, process and filament presets ([docs/orca-slicer.md](docs/orca-slicer.md)) |
 | `config/happy-hare/` | Happy Hare menuconfig for Qidi Box + Q2, and the settings applied on top of it |
 | `host/`, `printer/` | systemd units, nginx, Moonraker config, printer board helper |
+| `detect/`, `web/` | the failure detection service ([docs/failure-detection.md](docs/failure-detection.md)), the Box drying and failure detection pages |
 | `install.sh`, `scripts/` | installer, firmware build, validation, upstream bump |
 
 ## Good to know
 
 - **Network stalls.** Klipper schedules MCU commands a little ahead of time; a long
   network stall shuts the printer down with "Timer too close". Use a wired link, keep
-  the host lightly loaded (Klipper and the bridges run at nice -10, PrintGuard is capped
-  at one CPU with the lowest weight), and do not put the host on Wi-Fi.
+  the host lightly loaded (Klipper and the bridges run at nice -10, failure detection at
+  nice 10 with Obico's ML API capped at one CPU with the lowest weight), and do not put
+  the host on Wi-Fi.
 - **Box LEDs are static** like stock: animations send many small commands and made the
   Box MCU shut down over the network.
 - `[mcu]` serial devices are ptys in `~/printer_data/comms/q2-{main,thr,mmu}`.
@@ -177,12 +183,14 @@ This builds on the work of:
 - [Happy Hare](https://github.com/moggieuk/Happy-Hare), [Klipper](https://github.com/Klipper3d/klipper),
   [Katapult](https://github.com/Arksine/katapult), [Moonraker](https://github.com/Arksine/moonraker),
   [autopa](https://github.com/G0BL1N/autopa), [HelixScreen](https://github.com/prestonbrown/helixscreen),
-  [Spoolman](https://github.com/Donkie/Spoolman), [PrintGuard](https://github.com/oliverbravery/printguard),
+  [Spoolman](https://github.com/Donkie/Spoolman), [Obico](https://github.com/TheSpaghettiDetective/obico-server)
+  (its failure detector and alert rules), [Apprise](https://github.com/caronc/apprise),
   [Mainsail](https://github.com/mainsail-crew/mainsail), [Fluidd](https://github.com/fluidd-core/fluidd)
 - [QIDITECH/QIDI_Q2](https://github.com/QIDITECH/QIDI_Q2) — stock configuration (pins,
   macros, power-loss recovery), and the BunnyBox community port of the stock Box flow
 
 ## License
 
-GPL-3.0. autopa (AGPL-3.0) and PrintGuard (GPL-2.0) are installed from their own
-repositories, not redistributed here.
+GPL-3.0. autopa (AGPL-3.0) and Obico's ML API (AGPL-3.0, its model downloaded from
+obico.io when the image is built on the host) are installed from their own repositories,
+not redistributed here.

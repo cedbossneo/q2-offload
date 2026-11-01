@@ -16,7 +16,7 @@ set_var() {
     echo "${key}: ${old} -> ${new}"
 }
 
-for name in KLIPPER MOONRAKER KATAPULT AUTOPA TIMELAPSE MAINSAIL_CONFIG KIAUH; do
+for name in KLIPPER MOONRAKER KATAPULT AUTOPA TIMELAPSE MAINSAIL_CONFIG KIAUH OBICO_SERVER; do
     repo_var="${name}_REPO"; branch_var="${name}_BRANCH"
     sha="$(git ls-remote "${!repo_var}" "refs/heads/${!branch_var}" | cut -f1)"
     set_var "${name}_REF" "$sha"
@@ -48,6 +48,4 @@ set_var MAINSAIL_VERSION "$(latest_release mainsail-crew/mainsail)"
 set_var FLUIDD_VERSION "$(latest_release fluidd-core/fluidd)"
 v="$(latest_release Donkie/Spoolman)"
 ghcr_has_tag donkie/spoolman "${v#v}" && set_var SPOOLMAN_VERSION "$v"
-v="$(latest_release oliverbravery/printguard)"
-ghcr_has_tag oliverbravery/printguard "${v#v}" && set_var PRINTGUARD_VERSION "$v"
 true

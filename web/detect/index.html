@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>Failure detection</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%234aa3f2%22 stroke-width=%222.2%22 stroke-linecap=%22round%22%3E%3Cpath d=%22M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16%22/%3E%3Ccircle cx=%2212%22 cy=%2212%22 r=%223.2%22/%3E%3C/svg%3E">
+<!-- q2-offload: failure detection page, served by nginx at /detect/ next to Fluidd and Mainsail.
+     Talks to the q2-detect service at /detect/api/ (same origin). -->
+<script>try { var t = localStorage.getItem("q2-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<link rel="preload" href="/q2-assets/fonts/archivo-variable-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/q2-assets/q2.css">
+<link rel="stylesheet" href="detect.css">
+<script type="module" src="main.js"></script>
+</head>
+<body>
+<a class="visually-hidden" href="#main">Skip to content</a>
+<header class="app-header">
+  <div class="wrap app-header-row">
+    <h1 class="brand"><span data-icon="viewfinder" class="brand-mark"></span>Failure detection</h1>
+    <nav class="tabs" aria-label="Sections">
+      <a href="#live" data-route="live">Live</a>
+      <a href="#history" data-route="history">History<span class="tab-count" id="reviewCount" hidden></span></a>
+      <a href="#settings" data-route="settings">Settings</a>
+    </nav>
+    <div class="header-tools">
+      <span class="conn" id="conn" data-tone="neutral"><span class="lamp"></span><span class="conn-text" id="connText">Connecting…</span></span>
+      <button class="icon-btn" id="themeBtn" type="button" aria-label="Change theme"></button>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+  <p class="visually-hidden" id="announce" aria-live="polite"></p>
+
+  <!-- ===== Live ===== -->
+  <section class="view" id="view-live" aria-label="Live">
+    <div class="panel" id="liveUnreachable" hidden></div>
+    <div class="stack" id="liveNotices"></div>
+
+    <div class="live-top" id="liveTop">
+      <figure class="viewfinder" id="vf" data-tone="neutral">
+        <div class="vf-media" id="vfMedia">
+          <img id="vfFrame" alt="Last camera frame analysed by the detector" hidden>
+          <img id="vfLive" alt="Live camera stream" hidden>
+          <div class="boxes" id="vfBoxes" aria-hidden="true"></div>
+          <div class="vf-placeholder" id="vfPlaceholder">
+            <span data-icon="camera"></span>
+            <p id="vfPlaceholderText">Waiting for the first frame</p>
+          </div>
+        </div>
+        <figcaption class="vf-bar">
+          <span class="vf-chip" id="vfChip"><span class="vf-dot"></span><span id="vfChipText">Analysed frame</span></span>
+          <div class="seg seg-sm" role="group" aria-label="Camera view">
+            <button type="button" data-cam="frame" aria-pressed="true">Analysed</button>
+            <button type="button" data-cam="live" aria-pressed="false">Live</button>
+          </div>
+        </figcaption>
+      </figure>
+
+      <section class="panel verdict" id="verdict" data-tone="neutral" aria-labelledby="vTitle">
+        <p class="verdict-status"><span class="lamp" id="vLamp"></span><span id="vStatus">Connecting</span></p>
+        <h2 class="verdict-title" id="vTitle">Connecting to the detection service</h2>
+        <p class="verdict-file" id="vFile"></p>
+
+        <div class="rail" id="rail" role="meter" aria-label="Failure score" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0" hidden>
+          <div class="rail-head"><span>Score</span><b class="rail-value" id="railValue">–</b></div>
+          <div class="rail-track">
+            <span class="rail-zone zone-warn"></span>
+            <span class="rail-zone zone-pause"></span>
+            <span class="rail-fill"></span>
+            <span class="rail-needle"></span>
+          </div>
+          <div class="rail-scale">
+            <span class="rail-tick tick-warn" id="tickWarn">Warning</span>
+            <span class="rail-tick tick-pause" id="tickPause">Pause</span>
+          </div>
+        </div>
+
+        <p class="verdict-why" id="vWhy"></p>
+        <p class="verdict-detail" id="vDetail"></p>
+        <div class="verdict-actions" id="vActions" hidden>
+          <button class="btn btn-primary" id="ackBtn" type="button"><span data-icon="check"></span>Looks fine</button>
+          <button class="btn" id="resumeBtn" type="button" hidden><span data-icon="play"></span><span id="resumeText">Resume print</span></button>
+          <button class="btn" id="muteBtn" type="button"><span data-icon="bellOff"></span><span id="muteText">Mute for this print</span></button>
+        </div>
+        <p class="verdict-mode" id="vMode"></p>
+        <ul class="chain" id="vChain" aria-label="Detection chain"></ul>
+      </section>
+    </div>
+
+    <section class="panel" id="livePrint">
+      <div class="panel-head">
+        <h2 id="chartTitle">Score during this print</h2>
+        <span class="aside" id="chartAside"></span>
+      </div>
+      <div class="chart chart-score" id="liveChart"></div>
+      <div id="liveLegend"></div>
+    </section>
+
+    <section class="panel" id="liveAlerts" hidden>
+      <div class="panel-head">
+        <h2 id="alertsTitle">Alerts in this print</h2>
+        <span class="aside">Tell it whether they were real: the history keeps count.</span>
+      </div>
+      <div id="liveDecisions"></div>
+    </section>
+
+    <section class="panel" id="liveTimeline" hidden>
+      <div class="panel-head"><h2>Timeline</h2><span class="aside">A frame kept every 10 minutes</span></div>
+      <div id="liveTimelineStrip"></div>
+    </section>
+
+    <section class="panel explain" aria-labelledby="explainTitle">
+      <h2 id="explainTitle">How detection decides</h2>
+      <div class="explain-grid">
+        <div>
+          <h3>Every 10 seconds</h3>
+          <p>While a print runs, one camera frame goes to Obico's detector. It draws a box around anything that looks like spaghetti; the bars add up how sure it is.</p>
+        </div>
+        <div>
+          <h3>The score</h3>
+          <p>The line smooths the bars over the last minutes and subtracts what is usual for your camera, so a single odd frame or a reflection that is always there doesn't count. Around 0 means nothing unusual.</p>
+        </div>
+        <div>
+          <h3>The two levels</h3>
+          <p>Above the warning level you're notified. Above the pause level, Pause mode pauses the print; Observe mode only tells you it would have. Both levels adapt a little to the print.</p>
+        </div>
+        <div>
+          <h3>Your answer</h3>
+          <p>Looks fine dismisses the alert and keeps watching. Mute stops alerts until the print ends. The first minutes of a print never alert.</p>
+        </div>
+      </div>
+    </section>
+  </section>
+
+  <!-- ===== History ===== -->
+  <section class="view" id="view-history" aria-label="History" hidden>
+    <div id="historyList"></div>
+    <div id="historyDetail" hidden></div>
+  </section>
+
+  <!-- ===== Settings ===== -->
+  <section class="view" id="view-settings" aria-label="Settings" hidden>
+    <div id="settingsRoot"></div>
+  </section>
+</main>
+
+<footer class="app-footer">
+  <span id="version">q2-offload failure detection</span>
+  <a href="/box/">Box drying</a>
+  <a href="https://github.com/cedbossneo/q2-offload" rel="noopener">q2-offload on GitHub</a>
+</footer>
+</body>
+</html>

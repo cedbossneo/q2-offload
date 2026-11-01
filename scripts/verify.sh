@@ -23,6 +23,8 @@ load_cell_ready() { moonraker_json '/printer/objects/query?load_cell_probe=is_ca
 happy_hare_enabled() { moonraker_json '/printer/objects/query?mmu=enabled' | grep -q '"enabled": *true'; }
 spoolman_linked() { moonraker_json /server/spoolman/status | grep -q '"spoolman_connected": *true'; }
 http_ok() { curl -sf -m 5 -o /dev/null "$1"; }
+detect_ok() { curl -sf -m 5 localhost:7130/api/status | grep -q '"version"'; }
+obico_ml_api_ok() { curl -sf -m 5 localhost:3333/hc/ | grep -q ok; }
 bridges_active() {
     systemctl is-active --quiet q2-serial-bridge@main:7001 q2-serial-bridge@thr:7002 q2-serial-bridge@mmu:7003
 }
@@ -55,7 +57,11 @@ verify_install() {
         check "Spoolman :7912" http_ok "http://localhost:7912/api/v1/info"
         check "Moonraker connected to Spoolman" spoolman_linked
     fi
-    has printguard && check "PrintGuard :8000" http_ok "http://localhost:8000/"
+    if has detect; then
+        check "failure detection service (q2-detect)" detect_ok
+        check "Obico ML API" obico_ml_api_ok
+        { has fluidd || has mainsail; } && check "failure detection page /detect/" http_ok "http://localhost:${port}/detect/"
+    fi
     check "printer camera" http_ok "http://${PRINTER_IP}/webcam/?action=snapshot"
     check "HelixScreen running, pointed at ${HOST_IP}" printer_helixscreen_ok
     if [ "$VERIFY_FAILED" = 1 ]; then

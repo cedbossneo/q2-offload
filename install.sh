@@ -13,7 +13,7 @@
 #
 # Options:
 #   --printer <ip>               printer IP address (asked otherwise)
-#   --components <list>          comma list among: mainsail,fluidd,spoolman,autopa,printguard
+#   --components <list>          comma list among: mainsail,fluidd,spoolman,autopa,detect
 #                                (default: all)
 #   --channel <stable|latest>    updates offered by Moonraker: versions promoted as stable
 #                                (default), or every version that passes CI
@@ -49,7 +49,7 @@ fi
 . "${Q2_ROOT}/scripts/verify.sh"
 . "${Q2_ROOT}/scripts/calibrate.sh"
 
-ALL_COMPONENTS=mainsail,fluidd,spoolman,autopa,printguard
+ALL_COMPONENTS=mainsail,fluidd,spoolman,autopa,detect
 SETTINGS="${STATE_DIR}/settings.env"
 
 usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
@@ -81,6 +81,8 @@ cli_printer="${PRINTER_IP:-}"; cli_components="${COMPONENTS:-}"; cli_channel="${
 [ -n "$cli_printer" ] && PRINTER_IP="$cli_printer"
 [ -n "$cli_components" ] && COMPONENTS="$cli_components"
 [ -n "$cli_channel" ] && UPDATE_CHANNEL="$cli_channel"
+# PrintGuard was the failure detection before detect/ replaced it (host_retire_printguard)
+[ -n "${COMPONENTS:-}" ] && COMPONENTS="$(echo ",${COMPONENTS}," | sed 's/,printguard,/,detect,/; s/^,//; s/,$//')"
 
 # Web UI ports, saved in settings.env. New installs (and CI, which saves no settings) get
 # Mainsail on 80 and Fluidd on 81. Installs from before the ports were saved (settings.env
@@ -141,7 +143,7 @@ COMPONENT_HELP=(
     "fluidd|Fluidd web interface (port ${FLUIDD_PORT})"
     "spoolman|Spoolman spool inventory, filled by the Box NFC tags (Docker, port 7912)"
     "autopa|autopa: pressure advance calibration with the printer camera"
-    "printguard|PrintGuard: print failure detection on the camera (Docker, about 1 CPU core)"
+    "detect|Failure detection: Obico's detector watches the camera, pauses failing prints (Docker, 2 GB disk)"
 )
 
 choose_components() {
@@ -322,9 +324,11 @@ do_update_unattended() {
     moonraker_sysdeps
     host_nginx
     host_spoolman
-    host_printguard
+    host_retire_printguard
+    if has detect; then host_obico_ml_api; else host_drop_obico_ml_api; fi
     host_services
     systemctl restart klipper
+    has detect && systemctl restart q2-detect
     if [ -e "${STATE_DIR}/moonraker-changed" ]; then
         rm -f "${STATE_DIR}/moonraker-changed"
         systemctl restart moonraker
@@ -372,6 +376,7 @@ do_update_user() {
     host_config
     host_happy_hare
     host_autopa
+    host_detect_env
     host_web_clients
 }
 
@@ -394,7 +399,7 @@ final_notes() {
     has fluidd && echo "  Fluidd      $(web_url "$FLUIDD_PORT")/"
     has autopa && echo "  autopa      $(web_url "$(web_port)")/autopa/"
     has spoolman && echo "  Spoolman    http://${HOST_IP}:7912/"
-    has printguard && echo "  PrintGuard  http://${HOST_IP}:8000/  (camera: http://${PRINTER_IP}/webcam/?action=stream, printer: http://${HOST_IP})"
+    has detect && echo "  Detection   $(web_url "$(web_port)")/detect/"
     cat <<EOF
 
 Next: calibrate this machine (load cell, PID, input shaper, Box gears): docs/calibration.md

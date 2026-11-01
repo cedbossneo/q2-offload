@@ -125,8 +125,8 @@ host_packages() {
     info "Installing system packages"
     sudo apt-get update -qq
     sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${pkgs[@]}" >/dev/null
-    if { has spoolman || has printguard; } && ! command -v docker >/dev/null; then
-        info "Installing Docker (Spoolman / PrintGuard)"
+    if { has spoolman || has detect; } && ! command -v docker >/dev/null; then
+        info "Installing Docker (Spoolman / failure detection)"
         sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker.io >/dev/null
         svc enable --now docker
     fi
@@ -343,14 +343,22 @@ web_client() {
 host_web_clients() {
     if has mainsail; then web_client mainsail mainsail-crew/mainsail "$MAINSAIL_VERSION"; fi
     if has fluidd; then web_client fluidd fluidd-core/fluidd "$FLUIDD_VERSION"; fi
-    host_box_page
+    host_pages
 }
 
-# Box drying page, served by nginx at /box/ (the copy keeps it working if the repo moves)
-host_box_page() {
+# The Box drying and failure detection pages and their shared assets, served by nginx at
+# /box/, /detect/ and /q2-assets/ (the copies keep them working if the repo moves)
+host_pages() {
     { has mainsail || has fluidd; } || return 0
-    install -D -m 644 "${Q2_ROOT}/web/box/index.html" "${DATA}/web/box/index.html"
-    ok "Box drying page /box/"
+    local page
+    for page in assets box detect; do
+        rm -rf "${DATA}/web/${page}.new"
+        [ "$page" != detect ] || has detect || { rm -rf "${DATA}/web/detect"; continue; }
+        mkdir -p "${DATA}/web"
+        cp -r "${Q2_ROOT}/web/${page}" "${DATA}/web/${page}.new"
+        rm -rf "${DATA:?}/web/${page}" && mv "${DATA}/web/${page}.new" "${DATA}/web/${page}"
+    done
+    ok "pages /box/$(has detect && echo ' and /detect/')"
 }
 
 host_web() {
@@ -413,20 +421,63 @@ host_spoolman() {
     ok "Spoolman ${SPOOLMAN_VERSION} on :7912"
 }
 
-host_printguard() {
-    has printguard || return 0
-    in_ci && return 0
-    sudo mkdir -p /srv/printguard
-    if sudo docker inspect printguard >/dev/null 2>&1; then
-        [ "$(sudo docker inspect -f '{{.Config.Image}}' printguard)" = "ghcr.io/oliverbravery/printguard:${PRINTGUARD_VERSION#v}" ] \
-            && { ok "PrintGuard"; return 0; }
-        sudo docker rm -f printguard >/dev/null
+# Failure detection (detect/): the q2-detect service runs from this repo in its own venv,
+# Obico's ML API beside it in Docker
+host_detect() {
+    host_detect_env
+    if has detect; then in_ci || host_obico_ml_api; else host_drop_obico_ml_api; fi
+}
+
+# User part: the venv and Obico's source (the unattended update's user phase runs this)
+host_detect_env() {
+    has detect || return 0
+    local env="${HOME}/q2-detect-env" stamp
+    [ -x "${env}/bin/python" ] || python3 -m venv "$env"
+    stamp="$(sha256sum "${Q2_ROOT}/detect/requirements.txt" | cut -c1-16)"
+    if [ "$(cat "${env}/.q2-requirements" 2>/dev/null)" != "$stamp" ]; then
+        "${env}/bin/pip" install -q --upgrade pip
+        "${env}/bin/pip" install -q -r "${Q2_ROOT}/detect/requirements.txt"
+        echo "$stamp" > "${env}/.q2-requirements"
     fi
-    # One CPU at the lowest weight: inference + video remux must never starve Klipper
-    sudo docker run -d --name printguard --restart unless-stopped -p 8000:8000 \
-        -e TZ="$(cat /etc/timezone 2>/dev/null || echo UTC)" -v /srv/printguard:/data \
-        --cpus 1 --cpu-shares 256 --memory 1g "ghcr.io/oliverbravery/printguard:${PRINTGUARD_VERSION#v}" >/dev/null
-    ok "PrintGuard on :8000 (camera: http://${PRINTER_IP}/webcam/?action=stream)"
+    mkdir -p "${DATA}/detect"
+    in_ci || obico_ml_api_source "${HOME}/obico-ml-api"
+    ok "failure detection service (q2-detect)"
+}
+
+# Root part: the image and its container
+host_obico_ml_api() {
+    local image="q2-offload/obico-ml-api:${OBICO_SERVER_REF:0:12}" old
+    if ! sudo docker image inspect "$image" >/dev/null 2>&1; then
+        info "Building Obico's ML API image (downloads its 200 MB model, takes a few minutes)"
+        build_obico_ml_api "${HOME}/obico-ml-api" "$image" sudo
+    fi
+    if [ "$(sudo docker inspect -f '{{.Config.Image}}' obico-ml-api 2>/dev/null)" != "$image" ]; then
+        sudo docker rm -f obico-ml-api >/dev/null 2>&1 || true
+        # Host network bound to localhost: only q2-detect calls it, and it fetches the frames from
+        # q2-detect at 127.0.0.1:7130. One CPU at the lowest weight, never ahead of Klipper
+        sudo docker run -d --name obico-ml-api --restart unless-stopped --network host \
+            --cpus 1 --cpu-shares 256 --memory 1g "$image" \
+            gunicorn --bind 127.0.0.1:3333 --workers 1 --timeout 120 wsgi >/dev/null
+    fi
+    for old in $(sudo docker images q2-offload/obico-ml-api --format '{{.Repository}}:{{.Tag}}'); do
+        [ "$old" = "$image" ] || sudo docker rmi "$old" >/dev/null 2>&1 || true
+    done
+    ok "Obico ML API"
+}
+
+host_drop_obico_ml_api() {
+    in_ci && return 0
+    command -v docker >/dev/null && sudo docker inspect obico-ml-api >/dev/null 2>&1 || return 0
+    sudo docker rm -f obico-ml-api >/dev/null
+    ok "Obico ML API removed (failure detection not selected)"
+}
+
+# PrintGuard was the failure detection before detect/: its container goes, /srv/printguard stays
+host_retire_printguard() {
+    in_ci && return 0
+    command -v docker >/dev/null && sudo docker inspect printguard >/dev/null 2>&1 || return 0
+    sudo docker rm -f printguard >/dev/null
+    warn "PrintGuard removed: failure detection is now the page /detect/ (its data stays in /srv/printguard)"
 }
 
 host_services() {
@@ -441,9 +492,17 @@ host_services() {
     sudo install -m 644 "$tmp" /etc/systemd/system/q2-serial-bridge@.service
     render "${Q2_ROOT}/host/systemd/q2-offload.service" > "$tmp"
     sudo install -m 644 "$tmp" /etc/systemd/system/q2-offload.service
+    if has detect; then
+        render "${Q2_ROOT}/host/systemd/q2-detect.service" > "$tmp"
+        sudo install -m 644 "$tmp" /etc/systemd/system/q2-detect.service
+    elif [ -e /etc/systemd/system/q2-detect.service ]; then
+        sudo systemctl disable -q --now q2-detect || true
+        sudo rm -f /etc/systemd/system/q2-detect.service
+    fi
     rm -f "$tmp"
     sudo systemctl daemon-reload
     sudo systemctl enable -q klipper q2-serial-bridge@main:7001 q2-serial-bridge@thr:7002 q2-serial-bridge@mmu:7003
+    has detect && sudo systemctl enable -q q2-detect
     ok "systemd units (klipper, q2-serial-bridge@main/thr/mmu)"
 }
 
@@ -452,6 +511,8 @@ host_start() {
     sudo systemctl restart q2-serial-bridge@main:7001 q2-serial-bridge@thr:7002 q2-serial-bridge@mmu:7003
     sleep 2
     sudo systemctl restart klipper moonraker
+    has detect && sudo systemctl restart q2-detect
+    return 0
 }
 
 # Fetch the firmware matching this Klipper + patch series from the q2-offload releases,
@@ -498,7 +559,8 @@ host_install_all() {
     host_autopa
     host_web
     host_spoolman
-    host_printguard
+    host_retire_printguard
+    host_detect
     host_services
 }
 

@@ -9,9 +9,9 @@ import sys
 # Material Design Icons paths (pictogrammers.com, Apache-2.0)
 ICON_CHART = ("M4 19V20H22V22H2V2H4V17C7 17 10 15 12.1 11.4C15.1 6.4 18.4 4 22 4V6"
               "C19.2 6 16.5 8.1 13.9 12.5C11.3 16.6 7.7 19 4 19Z")
-ICON_SHIELD = ("M21,11C21,16.55 17.16,21.74 12,23C6.84,21.74 3,16.55 3,11V5L12,1L21,5V11"
-               "M12,21C15.75,20 19,15.54 19,11.22V6.3L12,3.18L5,6.3V11.22C5,15.54 8.25,20 12,21"
-               "M10,17L6,13L7.41,11.59L10,14.17L16.59,7.58L18,9")
+ICON_EYE = ("M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12"
+            "A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5"
+            "C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z")
 ICON_WATER = ("M12,20A6,6 0 0,1 6,14C6,10 12,3.25 12,3.25C12,3.25 18,10 18,14A6,6 0 0,1 12,20Z")
 ICON_SPOOL = ("M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2"
               "M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4"
@@ -27,8 +27,8 @@ def main():
     links = [{"title": "Box drying", "href": "%s%s/box/" % (base, port), "icon": ICON_WATER}]
     if 'autopa' in components:
         links.append({"title": "AutoPA", "href": "%s%s/autopa/" % (base, port), "icon": ICON_CHART})
-    if 'printguard' in components:
-        links.append({"title": "PrintGuard", "href": "%s:8000/" % base, "icon": ICON_SHIELD})
+    if 'detect' in components:
+        links.append({"title": "Failure detection", "href": "%s%s/detect/" % (base, port), "icon": ICON_EYE})
     if 'spoolman' in components:
         links.append({"title": "Spoolman", "href": "%s:7912/" % base, "icon": ICON_SPOOL})
     for i, link in enumerate(links):
