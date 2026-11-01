@@ -41,10 +41,11 @@ KIAUH_REF=d3e538de7b3163abe27fdf8116a60716d4db31ce
 MAINSAIL_VERSION=v2.19.0
 FLUIDD_VERSION=v1.37.7
 SPOOLMAN_VERSION=v0.27.0
-# Obico's ML API for failure detection (detect/), built on the host from
-# ml_api/Containerfile.cpu. obico-server ships from its release branch.
-OBICO_SERVER_REPO=https://github.com/TheSpaghettiDetective/obico-server.git
-OBICO_SERVER_BRANCH=release
+# Obico's ML API for failure detection (detect/): the CPU image Obico publishes from
+# obico-server's release branch (x86_64 and arm64), pinned by digest. OBICO_SERVER_REF is the
+# commit it was built from; bump.sh moves both together.
+OBICO_ML_API_IMAGE=ghcr.io/thespaghettidetective/obico-ml-api-cpu
+OBICO_ML_API_DIGEST=sha256:e1b1c5b4cfc517ed884cad24e4a709d31b935ea49dab45ff60d31a62f4cb86ee
 OBICO_SERVER_REF=6f938964c63892df2b6d5b68d99ea783fc1a7c78
 
 # First-time Katapult install without an ST-Link (n3oney/qidi-q2-klipper deployers,

@@ -38,14 +38,14 @@ jobs:
         run: node --test tests/web/*.test.mjs
 
   detect:
-    # The q2-detect service with Obico's ML API built from the pinned obico-server commit, as
-    # the installer builds it, against a fake Moonraker and camera
+    # The q2-detect service with Obico's ML API image pinned in VERSIONS, as the installer
+    # pulls it, against a fake Moonraker and camera
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.sha }}
-      - name: Build the ML API and run end to end
+      - name: Pull the ML API and run end to end
         run: tests/detect/ci.sh
 
   firmware:

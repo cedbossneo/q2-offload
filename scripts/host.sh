@@ -428,7 +428,7 @@ host_detect() {
     if has detect; then in_ci || host_obico_ml_api; else host_drop_obico_ml_api; fi
 }
 
-# User part: the venv and Obico's source (the unattended update's user phase runs this)
+# User part: the venv (the unattended update's user phase runs this)
 host_detect_env() {
     has detect || return 0
     local env="${HOME}/q2-detect-env" stamp
@@ -440,16 +440,17 @@ host_detect_env() {
         echo "$stamp" > "${env}/.q2-requirements"
     fi
     mkdir -p "${DATA}/detect"
-    in_ci || obico_ml_api_source "${HOME}/obico-ml-api"
     ok "failure detection service (q2-detect)"
 }
 
-# Root part: the image and its container
+# Root part: Obico's image and its container. The running container is only replaced once the
+# new image is downloaded
 host_obico_ml_api() {
-    local image="q2-offload/obico-ml-api:${OBICO_SERVER_REF:0:12}" old
+    local image old
+    image="$(obico_ml_api_image)"
     if ! sudo docker image inspect "$image" >/dev/null 2>&1; then
-        info "Building Obico's ML API image (downloads its 200 MB model, takes a few minutes)"
-        build_obico_ml_api "${HOME}/obico-ml-api" "$image" sudo
+        info "Downloading Obico's ML API image (about 350 MB)"
+        pull_obico_ml_api sudo
     fi
     if [ "$(sudo docker inspect -f '{{.Config.Image}}' obico-ml-api 2>/dev/null)" != "$image" ]; then
         sudo docker rm -f obico-ml-api >/dev/null 2>&1 || true
@@ -459,7 +460,7 @@ host_obico_ml_api() {
             --cpus 1 --cpu-shares 256 --memory 1g "$image" \
             gunicorn --bind 127.0.0.1:3333 --workers 1 --timeout 120 wsgi >/dev/null
     fi
-    for old in $(sudo docker images q2-offload/obico-ml-api --format '{{.Repository}}:{{.Tag}}'); do
+    for old in $(sudo docker images --digests --format '{{.Repository}}@{{.Digest}}' "$OBICO_ML_API_IMAGE"); do
         [ "$old" = "$image" ] || sudo docker rmi "$old" >/dev/null 2>&1 || true
     done
     ok "Obico ML API"

@@ -54,30 +54,18 @@ checkout_ref() {
     git -C "$dir" checkout --quiet --force --detach "$ref"
 }
 
-# obico_ml_api_source <dir>: obico-server's ml_api/ at OBICO_SERVER_REF, a sparse shallow
-# checkout recorded in <dir>/.q2-ref, so a build run as root never has to run git there.
-obico_ml_api_source() {
-    local dir="$1"
-    [ "$(cat "${dir}/.q2-ref" 2>/dev/null)" = "$OBICO_SERVER_REF" ] && return 0
-    if [ ! -d "${dir}/.git" ]; then
-        git init --quiet "$dir"
-        git -C "$dir" remote add origin "$OBICO_SERVER_REPO"
-        git -C "$dir" sparse-checkout set ml_api
-    fi
-    git -C "$dir" fetch --quiet --depth 1 --filter=blob:none origin "$OBICO_SERVER_REF"
-    git -C "$dir" checkout --quiet --force --detach FETCH_HEAD
-    echo "$OBICO_SERVER_REF" > "${dir}/.q2-ref"
-}
+# obico_ml_api_image: Obico's ML API image pinned in VERSIONS
+obico_ml_api_image() { echo "${OBICO_ML_API_IMAGE}@${OBICO_ML_API_DIGEST}"; }
 
-# build_obico_ml_api <src-dir> <image> [prefix...]: the CPU image of that checkout, docker run
-# through the prefix (e.g. sudo). The build downloads the model from Obico, so q2-offload never
-# redistributes it.
-build_obico_ml_api() {
-    local dir="$1" image="$2"
-    shift 2
-    [ "$(cat "${dir}/.q2-ref" 2>/dev/null)" = "$OBICO_SERVER_REF" ] \
-        || die "${dir} does not hold obico-server ${OBICO_SERVER_REF:0:12}: run ./install.sh update"
-    "$@" docker build -q -f "${dir}/ml_api/Containerfile.cpu" -t "$image" "${dir}/ml_api" >/dev/null
+# pull_obico_ml_api [prefix...]: download that image, docker run through the prefix (e.g. sudo).
+# Obico publishes it, model included, so q2-offload never redistributes either.
+pull_obico_ml_api() {
+    local i
+    for i in 1 2 3; do
+        "$@" docker pull -q "$(obico_ml_api_image)" >/dev/null && return 0
+        sleep $((i * 10))
+    done
+    die "could not download Obico's ML API image $(obico_ml_api_image): is ghcr.io reachable?"
 }
 
 # apply_patches <git-dir> <patch-dir> <branch>: build <branch> = HEAD + every patch.

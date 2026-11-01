@@ -59,11 +59,12 @@ Warnings and pauses also show in the Mainsail / Fluidd console.
 | Part | Where | Notes |
 |---|---|---|
 | `q2-detect` | systemd service, `~/q2-detect-env`, code in `detect/` | port 7130 on localhost, served by nginx at `/detect/api/`; nice 10 |
-| Obico's ML API | Docker container `obico-ml-api`, host network | port 3333 on localhost only; built on the host from obico-server's `ml_api/Containerfile.cpu` at the commit pinned in `VERSIONS`; one CPU at the lowest weight; about 1 GB of image |
+| Obico's ML API | Docker container `obico-ml-api`, host network | port 3333 on localhost only; Obico's own image (`ghcr.io/thespaghettidetective/obico-ml-api-cpu`, x86_64 and arm64) pinned by digest in `VERSIONS`; one CPU at the lowest weight; about 350 MB to download, 1 GB on disk |
 | Data | `~/printer_data/detect/` | settings, the printer's usual level, and one folder per print |
 
-Frames never leave the host. Obico's model is downloaded from obico.io when the image is
-built, not redistributed by q2-offload.
+Frames never leave the host. Obico's model comes inside Obico's image; q2-offload does not
+redistribute it. A new image reaches users through the daily upstream update, once CI has
+run it.
 
 ## Troubleshooting
 

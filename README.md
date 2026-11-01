@@ -191,6 +191,5 @@ This builds on the work of:
 
 ## License
 
-GPL-3.0. autopa (AGPL-3.0) and Obico's ML API (AGPL-3.0, its model downloaded from
-obico.io when the image is built on the host) are installed from their own repositories,
-not redistributed here.
+GPL-3.0. autopa (AGPL-3.0) and Obico's ML API (AGPL-3.0, the image Obico publishes with its
+model) are installed from their own repositories and registry, not redistributed here.

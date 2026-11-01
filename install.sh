@@ -143,7 +143,7 @@ COMPONENT_HELP=(
     "fluidd|Fluidd web interface (port ${FLUIDD_PORT})"
     "spoolman|Spoolman spool inventory, filled by the Box NFC tags (Docker, port 7912)"
     "autopa|autopa: pressure advance calibration with the printer camera"
-    "detect|Failure detection: Obico's detector watches the camera, pauses failing prints (Docker, 2 GB disk)"
+    "detect|Failure detection: Obico's detector watches the camera, pauses failing prints (Docker, 1 GB disk)"
 )
 
 choose_components() {
