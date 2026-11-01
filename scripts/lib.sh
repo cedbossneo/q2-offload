@@ -54,6 +54,20 @@ checkout_ref() {
     git -C "$dir" checkout --quiet --force --detach "$ref"
 }
 
+# obico_ml_api_image: Obico's ML API image pinned in VERSIONS
+obico_ml_api_image() { echo "${OBICO_ML_API_IMAGE}@${OBICO_ML_API_DIGEST}"; }
+
+# pull_obico_ml_api [prefix...]: download that image, docker run through the prefix (e.g. sudo).
+# Obico publishes it, model included, so q2-offload never redistributes either.
+pull_obico_ml_api() {
+    local i
+    for i in 1 2 3; do
+        "$@" docker pull -q "$(obico_ml_api_image)" >/dev/null && return 0
+        sleep $((i * 10))
+    done
+    die "could not download Obico's ML API image $(obico_ml_api_image): is ghcr.io reachable?"
+}
+
 # apply_patches <git-dir> <patch-dir> <branch>: build <branch> = HEAD + every patch.
 # A patch that no longer applies but reverse-applies is already upstream: skipped.
 apply_patches() {

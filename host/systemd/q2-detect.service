@@ -1,0 +1,19 @@
+[Unit]
+Description=Failure detection: Obico's detector watching the printer camera (q2-offload)
+Documentation=https://github.com/cedbossneo/q2-offload/blob/main/docs/failure-detection.md
+After=network-online.target moonraker.service docker.service
+Wants=network-online.target
+
+[Install]
+WantedBy=multi-user.target
+
+[Service]
+Type=simple
+User=@USER@
+WorkingDirectory=@Q2_ROOT@/detect
+ExecStart=@HOME@/q2-detect-env/bin/python -m q2_detect --data @HOME@/printer_data/detect
+Restart=always
+RestartSec=10
+# Behind Klipper and Moonraker: it only needs a moment every 10 s
+Nice=10
+CPUWeight=20

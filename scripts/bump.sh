@@ -27,13 +27,29 @@ latest_release() {
         "https://api.github.com/repos/$1/releases/latest" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])'
 }
 
-# Only take a container release once its image is actually published
-ghcr_has_tag() {
+# ghcr_index <image> <tag>: the tag's multi-arch index on GHCR, byte for byte (its sha256 is
+# the digest)
+ghcr_index() {
     local image="$1" tag="$2" token
     token="$(curl -fsSL "https://ghcr.io/token?scope=repository:${image}:pull" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
-    curl -fsS -o /dev/null -H "Authorization: Bearer ${token}" \
+    curl -fsS -H "Authorization: Bearer ${token}" \
         -H "Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json" \
         "https://ghcr.io/v2/${image}/manifests/${tag}"
+}
+
+# Only take a container release once its image is actually published
+ghcr_has_tag() { ghcr_index "$1" "$2" >/dev/null; }
+
+# Obico's ML API: the image behind Obico's "release" tag, when it covers x86_64 and arm64.
+# Prints the commit it was built from (its revision annotation).
+obico_release_commit() {
+    python3 - "$1" <<'EOF'
+import json, sys
+index = json.load(open(sys.argv[1]))
+platforms = {(m.get("platform") or {}).get("architecture") for m in index.get("manifests", [])}
+if {"amd64", "arm64"} <= platforms:
+    print(index.get("annotations", {}).get("org.opencontainers.image.revision", ""))
+EOF
 }
 
 # Commit of a tag (the commit an annotated tag points to)
@@ -48,6 +64,11 @@ set_var MAINSAIL_VERSION "$(latest_release mainsail-crew/mainsail)"
 set_var FLUIDD_VERSION "$(latest_release fluidd-core/fluidd)"
 v="$(latest_release Donkie/Spoolman)"
 ghcr_has_tag donkie/spoolman "${v#v}" && set_var SPOOLMAN_VERSION "$v"
-v="$(latest_release oliverbravery/printguard)"
-ghcr_has_tag oliverbravery/printguard "${v#v}" && set_var PRINTGUARD_VERSION "$v"
+index="$(mktemp)"
+if ghcr_index "${OBICO_ML_API_IMAGE#ghcr.io/}" release > "$index" \
+        && commit="$(obico_release_commit "$index")" && [ -n "$commit" ]; then
+    set_var OBICO_ML_API_DIGEST "sha256:$(sha256sum "$index" | cut -d' ' -f1)"
+    set_var OBICO_SERVER_REF "$commit"
+fi
+rm -f "$index"
 true
