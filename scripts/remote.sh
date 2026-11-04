@@ -63,6 +63,44 @@ printer_prepare() {
     fi
 }
 
+# The Qidi Box on the printer's USB, in any of its states: stock firmware, our Klipper, or
+# Katapult (same names as q2-printer.sh). Prints the device name, nothing if there is none.
+printer_box_device() {
+    pssh "ls /dev/serial/by-id/ 2>/dev/null" 2>/dev/null \
+        | grep -E '^usb-(Klipper_QIDI_BOX_V2|Klipper_stm32f401xc_|katapult_stm32f401xc_)' | head -1 || true
+}
+
+# Check the Box setting (--box / --no-box) against what is plugged into the printer, before
+# anything is flashed. "switch": a fresh install may still change to --no-box (the host is
+# not configured yet). "strict": the host is configured, so only stop with instructions.
+printer_check_box() {
+    local mode="${1:-strict}" found
+    in_ci && return 0
+    found="$(printer_box_device)"
+    if has_box; then
+        if [ -n "$found" ]; then ok "Qidi Box found (${found})"; return 0; fi
+        warn "no Qidi Box found on the printer's USB (looked for usb-Klipper_QIDI_BOX_V2*, usb-Klipper_stm32f401xc*, usb-katapult_stm32f401xc*)"
+        echo "If you have one, check its USB cable to the printer and that it is switched on, then run this again."
+        if [ "$mode" != switch ]; then
+            die "no Qidi Box: connect it, or reinstall without it: ./install.sh --no-box"
+        fi
+        # Never switched silently: --yes or no terminal stops here
+        if [ "${ASSUME_YES:-0}" = 1 ] || [ ! -t 0 ]; then
+            die "no Qidi Box: connect it, or run with --no-box"
+        fi
+        confirm "Install without a Qidi Box (same as --no-box: mainboard and toolhead only, no Happy Hare)?" n \
+            || die "stopped before any change: connect the Box, or run with --no-box"
+        BOX=0
+        save_settings
+        info "Continuing without a Qidi Box (saved; ./install.sh --box to change it later)"
+    else
+        [ -z "$found" ] && return 0
+        warn "a Qidi Box is connected (${found}), but this install is set to --no-box: it will not be flashed or used"
+        echo "To use it, run the installer with --box instead."
+        confirm "Continue without the Box?" y || die "stopped: run again with --box"
+    fi
+}
+
 # First conversion only: fetch and verify the pinned Katapult deployers, copy them over.
 printer_fetch_deployers() {
     local tmp
@@ -85,6 +123,7 @@ printer_fetch_deployers() {
 # MCUs, in a single root session on the printer (one sudo password prompt).
 printer_convert() {
     local deploy="${1:-}"
+    printer_check_box strict
     if [ "$deploy" = deploy ]; then
         cat <<EOF
 

@@ -247,6 +247,8 @@ This will:
 Read README.md (warnings) first. A backup of the printer config is made before step 2.
 EOF
     confirm "Continue?" n || exit 0
+    # Box present or not decides the whole host setup: checked before anything is installed
+    in_ci || { printer_ssh_key; printer_check_box switch; }
     host_install_all
     host_firmware
     printer_prepare
