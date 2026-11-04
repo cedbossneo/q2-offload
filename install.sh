@@ -18,6 +18,8 @@
 #   --channel <stable|latest>    updates offered by Moonraker: versions promoted as stable
 #                                (default), or every version that passes CI
 #   --build-firmware             build the MCU firmware here instead of downloading it
+#   --no-box                     printer without a Qidi Box: flash and connect only the
+#                                mainboard and toolhead, no Happy Hare (saved; --box undoes it)
 #   --yes                        answer yes to plain yes/no questions (flashing always asks)
 #   --ci                         CI mode: host software only, no systemd/nginx/docker/printer
 #
@@ -52,7 +54,7 @@ fi
 ALL_COMPONENTS=mainsail,fluidd,spoolman,autopa,detect
 SETTINGS="${STATE_DIR}/settings.env"
 
-usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 command="install"
 case "${1:-}" in
@@ -65,6 +67,8 @@ while [ $# -gt 0 ]; do
         --components) COMPONENTS="${2:?}"; shift 2 ;;
         --channel) UPDATE_CHANNEL="${2:?}"; shift 2 ;;
         --build-firmware) BUILD_FIRMWARE=1; shift ;;
+        --no-box) BOX=0; shift ;;
+        --box) BOX=1; shift ;;
         --yes|-y) ASSUME_YES=1; shift ;;
         --ci) Q2_CI=1; shift ;;
         --unattended) shift ;;
@@ -76,11 +80,14 @@ done
 
 # Saved answers from a previous run; options given on the command line win
 cli_printer="${PRINTER_IP:-}"; cli_components="${COMPONENTS:-}"; cli_channel="${UPDATE_CHANNEL:-}"
+cli_box="${BOX:-}"
 # shellcheck disable=SC1090
 [ -f "$SETTINGS" ] && . "$SETTINGS"
 [ -n "$cli_printer" ] && PRINTER_IP="$cli_printer"
 [ -n "$cli_components" ] && COMPONENTS="$cli_components"
 [ -n "$cli_channel" ] && UPDATE_CHANNEL="$cli_channel"
+[ -n "$cli_box" ] && BOX="$cli_box"
+BOX="${BOX:-1}"
 # PrintGuard was the failure detection before detect/ replaced it (host_retire_printguard)
 [ -n "${COMPONENTS:-}" ] && COMPONENTS="$(echo ",${COMPONENTS}," | sed 's/,printguard,/,detect,/; s/^,//; s/,$//')"
 
@@ -112,6 +119,7 @@ COMPONENTS=${COMPONENTS}
 UPDATE_CHANNEL=${UPDATE_CHANNEL}
 MAINSAIL_PORT=${MAINSAIL_PORT}
 FLUIDD_PORT=${FLUIDD_PORT}
+BOX=${BOX}
 EOF
 }
 
@@ -149,7 +157,7 @@ COMPONENT_HELP=(
 choose_components() {
     local sel=",${COMPONENTS-$ALL_COMPONENTS}," i entry name reply n
     while true; do
-        printf '\n%sComponents to install%s (Klipper, Moonraker and Happy Hare are always installed)\n' "${C_INFO}" "${C_OFF}"
+        printf '\n%sComponents to install%s (Klipper and Moonraker are always installed, Happy Hare with a Box)\n' "${C_INFO}" "${C_OFF}"
         i=1
         for entry in "${COMPONENT_HELP[@]}"; do
             name="${entry%%|*}"
@@ -206,13 +214,13 @@ preflight() {
 banner() {
     cat <<EOF
 ${C_INFO}q2-offload${C_OFF} — Klipper ${KLIPPER_REF:0:9}, Happy Hare ${HAPPY_HARE_RELEASE}, firmware $(firmware_id)
-  printer ${PRINTER_IP}   host ${HOST_IP}   components ${COMPONENTS}
+  printer ${PRINTER_IP}   host ${HOST_IP}   components ${COMPONENTS}$(has_box || echo '   no Qidi Box')
 EOF
 }
 
 wait_ready() {
     local state
-    info "Waiting for Klipper to connect to the three MCUs (up to 2 minutes)"
+    info "Waiting for Klipper to connect to the $(has_box && echo three MCUs || echo mainboard and toolhead) (up to 2 minutes)"
     for _ in $(seq 1 60); do
         state="$(curl -s localhost:7125/printer/info 2>/dev/null | sed -n 's/.*"state": *"\([a-z]*\)".*/\1/p')"
         [ "$state" = ready ] && { ok "Klipper is ready"; return 0; }
@@ -235,7 +243,7 @@ do_install() {
 This will:
   1. install Klipper, Moonraker, Happy Hare and the selected components on THIS machine
   2. convert the printer board into a serial proxy (its own Klipper/Moonraker stop)
-  3. flash the mainboard, toolhead and Qidi Box MCUs
+  3. flash the mainboard, toolhead$(has_box && echo ' and Qidi Box') MCUs
 Read README.md (warnings) first. A backup of the printer config is made before step 2.
 EOF
     confirm "Continue?" n || exit 0
@@ -402,7 +410,7 @@ final_notes() {
     has detect && echo "  Detection   $(web_url "$(web_port)")/detect/"
     cat <<EOF
 
-Next: calibrate this machine (load cell, PID, input shaper, Box gears): docs/calibration.md
+Next: calibrate this machine (load cell, PID, input shaper$(has_box && echo ', Box gears')): docs/calibration.md
 Update later from the update manager in Mainsail/Fluidd, or with ./install.sh update
 EOF
 }

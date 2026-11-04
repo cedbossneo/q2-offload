@@ -55,6 +55,8 @@ printer_push() {
 printer_prepare() {
     printer_ssh_key
     printer_push
+    # q2-printer.sh flashes and proxies the Box only without this marker (--no-box)
+    if has_box; then pssh "rm -f ${PRINTER_WORK}/no-box"; else pssh "touch ${PRINTER_WORK}/no-box"; fi
     if ! pssh "sudo -n /bin/bash ${PRINTER_WORK}/q2-printer.sh status" >/dev/null 2>&1; then
         info "Allowing ${PRINTER_USER} to run q2-printer.sh as root (printer sudo password, asked once)"
         proot sudoers
@@ -86,7 +88,7 @@ printer_convert() {
     if [ "$deploy" = deploy ]; then
         cat <<EOF
 
-${C_WARN}First conversion: Katapult bootloader on the three MCUs${C_OFF}
+${C_WARN}First conversion: Katapult bootloader on the $(has_box && echo three MCUs || echo mainboard and toolhead)${C_OFF}
 Qidi's own update scripts flash a Katapult "deployer" (n3oney/qidi-q2-klipper) while the
 stock firmware still runs. Afterwards Katapult replaces Qidi's bootloader: Qidi's firmware
 can still be flashed back through Katapult (docs/recovery.md), but recovering from a power
@@ -98,13 +100,13 @@ EOF
     fi
     cat <<EOF
 
-${C_WARN}Flashing Klipper ($(firmware_id)) on mainboard, toolhead and Qidi Box${C_OFF}
+${C_WARN}Flashing Klipper ($(firmware_id)) on mainboard, toolhead$(has_box && echo ' and Qidi Box')${C_OFF}
 Each MCU is put into Katapult and its application offset is checked before writing.
 EOF
     # Never skipped, not even with --yes
     confirm_phrase "FLASH"
     if [ -n "$(systemctl list-unit-files klipper.service --no-legend 2>/dev/null)" ]; then
-        sudo systemctl stop klipper q2-serial-bridge@main:7001 q2-serial-bridge@thr:7002 q2-serial-bridge@mmu:7003 2>/dev/null || true
+        sudo systemctl stop klipper q2-serial-bridge@main:7001 q2-serial-bridge@thr:7002 q2-serial-bridge@mmu:7003 2>/dev/null || true  # all three: a Box bridge may be left over
     fi
     # shellcheck disable=SC2086  # $deploy is empty or one word
     proot convert "$(firmware_id)" $deploy || die "firmware phase failed; see docs/recovery.md"

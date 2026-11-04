@@ -132,8 +132,7 @@ calibrate_offer() {
 
 ${C_INFO}Calibration${C_OFF}
 The printer now runs on standard Q2 values: Qidi's PID and input shaper, a load cell scale
-measured on another Q2, the Box gear rotation distance (13.8) and bowden length (${BOX_BOWDEN_LENGTH} mm)
-of a stock Box. That is enough to print, but this printer's own values are safer and better.
+measured on another Q2$(has_box && printf ', the Box gear rotation distance (13.8) and bowden length (%s mm)\nof a stock Box' "$BOX_BOWDEN_LENGTH"). That is enough to print, but this printer's own values are safer and better.
 Two of them take a few minutes and can run now (stay next to the printer):
 EOF
     if confirm "PID: heat the hotend to 250 °C and the bed to 70 °C, about 10 minutes?" y; then
@@ -156,7 +155,7 @@ EOF
 
 Still worth doing yourself (docs/calibration.md):
   - load cell scale with a known weight: LOAD_CELL_CALIBRATE
-  - Box gears and bowden: MMU_CALIBRATE_GEAR, MMU_CALIBRATE_BOWDEN (Happy Hare)
+$(has_box && echo '  - Box gears and bowden: MMU_CALIBRATE_GEAR, MMU_CALIBRATE_BOWDEN (Happy Hare)')
   - pressure advance per filament: autopa
 EOF
 }
