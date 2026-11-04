@@ -26,10 +26,11 @@ http_ok() { curl -sf -m 5 -o /dev/null "$1"; }
 detect_ok() { curl -sf -m 5 localhost:7130/api/status | grep -q '"version"'; }
 obico_ml_api_ok() { curl -sf -m 5 localhost:3333/hc/ | grep -q ok; }
 bridges_active() {
-    systemctl is-active --quiet q2-serial-bridge@main:7001 q2-serial-bridge@thr:7002 q2-serial-bridge@mmu:7003
+    # shellcheck disable=SC2046  # one word per unit
+    systemctl is-active --quiet $(bridge_units)
 }
 printer_proxies_active() {
-    pssh "systemctl is-active --quiet q2-serial-proxy@main q2-serial-proxy@thr q2-serial-proxy@mmu"
+    pssh "systemctl is-active --quiet q2-serial-proxy@main q2-serial-proxy@thr$(has_box && echo ' q2-serial-proxy@mmu')"
 }
 printer_helixscreen_ok() {
     pssh "systemctl is-active --quiet helixscreen && grep -q '\"moonraker_host\": *\"${HOST_IP}\"' /home/${PRINTER_USER}/helixscreen/config/settings.json"
@@ -41,17 +42,17 @@ verify_install() {
     VERIFY_FAILED=0
     check "serial bridges to the printer" bridges_active
     check "printer serial proxies" printer_proxies_active
-    check "Klipper ready (mainboard, toolhead and Box connected)" klipper_ready
+    check "Klipper ready (mainboard, toolhead$(has_box && echo ' and Box') connected)" klipper_ready
     check "Moonraker connected to Klipper" moonraker_sees_klipper
     check "Moonraker components loaded" moonraker_no_failed_components
     check "load cell ready for probing" load_cell_ready
-    check "Happy Hare enabled" happy_hare_enabled
+    has_box && check "Happy Hare enabled" happy_hare_enabled
     has mainsail && check "Mainsail $(web_url "$MAINSAIL_PORT")/" http_ok "http://localhost:${MAINSAIL_PORT}/"
     has fluidd && check "Fluidd $(web_url "$FLUIDD_PORT")/" http_ok "http://localhost:${FLUIDD_PORT}/"
     local port
     port="$(web_port)"
     { has fluidd || has mainsail; } && check "Moonraker API through nginx" http_ok "http://localhost:${port}/server/info"
-    { has fluidd || has mainsail; } && check "Box drying page /box/" http_ok "http://localhost:${port}/box/"
+    { has fluidd || has mainsail; } && has_box && check "Box drying page /box/" http_ok "http://localhost:${port}/box/"
     has autopa && check "autopa" http_ok "http://localhost:${port}/autopa/"
     if has spoolman; then
         check "Spoolman :7912" http_ok "http://localhost:7912/api/v1/info"

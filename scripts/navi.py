@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Mainsail sidebar links (.theme/navi.json): the Box page and the selected q2-offload components.
 
-Usage: navi.py <components> <host-ip> <web-port>
+Usage: navi.py <components> <host-ip> <web-port> [box|nobox]
+
+Links are relative: they open on the address and port the browser used for Mainsail (a LAN
+name, a VPN address...), not on HOST_IP, which is the host's address on the printer link.
+<host-ip> and <web-port> are accepted for compatibility and unused.
 """
 import json
 import sys
@@ -20,17 +24,18 @@ ICON_SPOOL = ("M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 
 
 def main():
     components = set(sys.argv[1].split(','))
-    host, web_port = sys.argv[2], sys.argv[3]
-    base = "http://%s" % host
-    # The Box page and autopa are served by the same nginx as the web clients
-    port = "" if web_port == "80" else ":%s" % web_port
-    links = [{"title": "Box drying", "href": "%s%s/box/" % (base, port), "icon": ICON_WATER}]
+    box = (sys.argv[4] if len(sys.argv) > 4 else 'box') != 'nobox'
+    # Every nginx server of the web clients serves these pages (q2-offload-common.conf);
+    # /spoolman redirects to port 7912 on the host name the browser used
+    links = []
+    if box:
+        links.append({"title": "Box drying", "href": "/box/", "icon": ICON_WATER})
     if 'autopa' in components:
-        links.append({"title": "AutoPA", "href": "%s%s/autopa/" % (base, port), "icon": ICON_CHART})
+        links.append({"title": "AutoPA", "href": "/autopa/", "icon": ICON_CHART})
     if 'detect' in components:
-        links.append({"title": "Failure detection", "href": "%s%s/detect/" % (base, port), "icon": ICON_EYE})
+        links.append({"title": "Failure detection", "href": "/detect/", "icon": ICON_EYE})
     if 'spoolman' in components:
-        links.append({"title": "Spoolman", "href": "%s:7912/" % base, "icon": ICON_SPOOL})
+        links.append({"title": "Spoolman", "href": "/spoolman", "icon": ICON_SPOOL})
     for i, link in enumerate(links):
         link.update(target="_blank", position=85 + i)
     json.dump(links, sys.stdout, indent=2)

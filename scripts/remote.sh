@@ -55,9 +55,49 @@ printer_push() {
 printer_prepare() {
     printer_ssh_key
     printer_push
+    # q2-printer.sh flashes and proxies the Box only without this marker (--no-box)
+    if has_box; then pssh "rm -f ${PRINTER_WORK}/no-box"; else pssh "touch ${PRINTER_WORK}/no-box"; fi
     if ! pssh "sudo -n /bin/bash ${PRINTER_WORK}/q2-printer.sh status" >/dev/null 2>&1; then
         info "Allowing ${PRINTER_USER} to run q2-printer.sh as root (printer sudo password, asked once)"
         proot sudoers
+    fi
+}
+
+# The Qidi Box on the printer's USB, in any of its states: stock firmware, our Klipper, or
+# Katapult (same names as q2-printer.sh). Prints the device name, nothing if there is none.
+printer_box_device() {
+    pssh "ls /dev/serial/by-id/ 2>/dev/null" 2>/dev/null \
+        | grep -E '^usb-(Klipper_QIDI_BOX_V2|Klipper_stm32f401xc_|katapult_stm32f401xc_)' | head -1 || true
+}
+
+# Check the Box setting (--box / --no-box) against what is plugged into the printer, before
+# anything is flashed. "switch": a fresh install may still change to --no-box (the host is
+# not configured yet). "strict": the host is configured, so only stop with instructions.
+printer_check_box() {
+    local mode="${1:-strict}" found
+    in_ci && return 0
+    found="$(printer_box_device)"
+    if has_box; then
+        if [ -n "$found" ]; then ok "Qidi Box found (${found})"; return 0; fi
+        warn "no Qidi Box found on the printer's USB (looked for usb-Klipper_QIDI_BOX_V2*, usb-Klipper_stm32f401xc*, usb-katapult_stm32f401xc*)"
+        echo "If you have one, check its USB cable to the printer and that it is switched on, then run this again."
+        if [ "$mode" != switch ]; then
+            die "no Qidi Box: connect it, or reinstall without it: ./install.sh --no-box"
+        fi
+        # Never switched silently: --yes or no terminal stops here
+        if [ "${ASSUME_YES:-0}" = 1 ] || [ ! -t 0 ]; then
+            die "no Qidi Box: connect it, or run with --no-box"
+        fi
+        confirm "Install without a Qidi Box (same as --no-box: mainboard and toolhead only, no Happy Hare)?" n \
+            || die "stopped before any change: connect the Box, or run with --no-box"
+        BOX=0
+        save_settings
+        info "Continuing without a Qidi Box (saved; ./install.sh --box to change it later)"
+    else
+        [ -z "$found" ] && return 0
+        warn "a Qidi Box is connected (${found}), but this install is set to --no-box: it will not be flashed or used"
+        echo "To use it, run the installer with --box instead."
+        confirm "Continue without the Box?" y || die "stopped: run again with --box"
     fi
 }
 
@@ -83,10 +123,11 @@ printer_fetch_deployers() {
 # MCUs, in a single root session on the printer (one sudo password prompt).
 printer_convert() {
     local deploy="${1:-}"
+    printer_check_box strict
     if [ "$deploy" = deploy ]; then
         cat <<EOF
 
-${C_WARN}First conversion: Katapult bootloader on the three MCUs${C_OFF}
+${C_WARN}First conversion: Katapult bootloader on the $(has_box && echo three MCUs || echo mainboard and toolhead)${C_OFF}
 Qidi's own update scripts flash a Katapult "deployer" (n3oney/qidi-q2-klipper) while the
 stock firmware still runs. Afterwards Katapult replaces Qidi's bootloader: Qidi's firmware
 can still be flashed back through Katapult (docs/recovery.md), but recovering from a power
@@ -98,13 +139,13 @@ EOF
     fi
     cat <<EOF
 
-${C_WARN}Flashing Klipper ($(firmware_id)) on mainboard, toolhead and Qidi Box${C_OFF}
+${C_WARN}Flashing Klipper ($(firmware_id)) on mainboard, toolhead$(has_box && echo ' and Qidi Box')${C_OFF}
 Each MCU is put into Katapult and its application offset is checked before writing.
 EOF
     # Never skipped, not even with --yes
     confirm_phrase "FLASH"
     if [ -n "$(systemctl list-unit-files klipper.service --no-legend 2>/dev/null)" ]; then
-        sudo systemctl stop klipper q2-serial-bridge@main:7001 q2-serial-bridge@thr:7002 q2-serial-bridge@mmu:7003 2>/dev/null || true
+        sudo systemctl stop klipper q2-serial-bridge@main:7001 q2-serial-bridge@thr:7002 q2-serial-bridge@mmu:7003 2>/dev/null || true  # all three: a Box bridge may be left over
     fi
     # shellcheck disable=SC2086  # $deploy is empty or one word
     proot convert "$(firmware_id)" $deploy || die "firmware phase failed; see docs/recovery.md"
