@@ -3,8 +3,9 @@
 ## Stock firmware 01.01.02 and newer
 
 These versions move `/home/mks` to `/home/qidi`, leave a symlink, create a `qidi` account and
-delete the sudo rules of `mks`. The installer keeps logging in as `mks`, which community guides
-report still works with its stock password, and checks the printer before a first conversion
+delete the sudo rules of `mks`. The new account's stock password is `qiditech`. It reportedly
+has no sudo, so the installer keeps logging in as `mks`, which users report still works with its
+stock password `makerbase` and sudo, and checks the printer before a first conversion
 (`q2-printer.sh stock-check`): it stops with the reason and nothing flashed if `hid-flash`, an
 MCU or root access is missing. To use another account, set `PRINTER_USER` in
 `~/.config/q2-offload/settings.env`.
