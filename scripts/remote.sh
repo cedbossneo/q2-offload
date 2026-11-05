@@ -1,6 +1,8 @@
 # shellcheck shell=bash
 # Printer-board side of install.sh, driven over SSH. Source after lib.sh and host.sh.
 
+# Account on the printer board (saved in settings.env): "mks", or "qidi" on stock firmware
+# 01.01.02.x, which moves /home/mks to /home/qidi and removes the sudo rights of mks.
 PRINTER_USER="${PRINTER_USER:-mks}"
 PRINTER_WORK="/home/${PRINTER_USER}/q2-offload"
 SSH_OPTS=(-o ConnectTimeout=10 -o ServerAliveInterval=15)
@@ -12,11 +14,31 @@ pssh() { ssh "${SSH_OPTS[@]}" "${PRINTER_USER}@${PRINTER_IP}" "$@"; }
 # password; before that, -tt lets sudo ask for it (stock Qidi image: "makerbase").
 proot() { ssh -tt "${SSH_OPTS[@]}" "${PRINTER_USER}@${PRINTER_IP}" sudo /bin/bash "${PRINTER_WORK}/q2-printer.sh" "$@"; }
 
+# The stock Moonraker reports its home directory without a login, which tells the account
+# before any password is asked. Silent when it does not answer (printer already converted).
+printer_detect_user() {
+    local roots
+    [ "$PRINTER_USER" = mks ] || return 0
+    roots="$(curl -fsS -m 5 "http://${PRINTER_IP}:7125/server/files/roots" 2>/dev/null)" || return 0
+    if printf '%s' "$roots" | grep -q '/home/qidi/'; then
+        PRINTER_USER=qidi
+        PRINTER_WORK="/home/qidi/q2-offload"
+        save_settings
+        info "Stock firmware 01.01.02 or newer: using the printer account qidi"
+    fi
+}
+
+# Before a first conversion, with no change to the MCUs: can this account work here, and does
+# the stock image have what the flash needs? Stops with the reason before anything is flashed.
+printer_check_stock() {
+    proot stock-check || die "the printer is not ready for a first conversion; nothing was flashed. See docs/recovery.md"
+}
+
 printer_ssh_key() {
     if ssh -o BatchMode=yes "${SSH_OPTS[@]}" "${PRINTER_USER}@${PRINTER_IP}" true 2>/dev/null; then
         return 0
     fi
-    info "Setting up SSH key access to ${PRINTER_USER}@${PRINTER_IP} (stock password: makerbase)"
+    info "Setting up SSH key access to ${PRINTER_USER}@${PRINTER_IP} (mks: stock password makerbase)"
     [ -f "${HOME}/.ssh/id_ed25519" ] || ssh-keygen -q -t ed25519 -N '' -f "${HOME}/.ssh/id_ed25519"
     ssh-copy-id -i "${HOME}/.ssh/id_ed25519.pub" "${PRINTER_USER}@${PRINTER_IP}" >/dev/null
     ssh -o BatchMode=yes "${SSH_OPTS[@]}" "${PRINTER_USER}@${PRINTER_IP}" true \
@@ -25,10 +47,11 @@ printer_ssh_key() {
 
 printer_push() {
     local tmp
-    pssh "mkdir -p ${PRINTER_WORK}/firmware ${PRINTER_WORK}/deployer"
+    pssh "mkdir -p ${PRINTER_WORK}/firmware ${PRINTER_WORK}/deployer" \
+        || die "${PRINTER_USER} cannot write to ${PRINTER_WORK} on the printer (see docs/recovery.md, stock firmware 01.01.02+)"
     tmp="$(mktemp -d)"
     curl -fsSL "https://raw.githubusercontent.com/Arksine/katapult/${KATAPULT_REF}/scripts/flashtool.py" -o "${tmp}/flashtool.py"
-    scp -q "${SSH_OPTS[@]}" "${Q2_ROOT}/printer/q2-printer.sh" "${Q2_ROOT}/printer/q2-serial-proxy@.service" \
+    scp -q "${SSH_OPTS[@]}" "${Q2_ROOT}/printer/q2-printer.sh" "${Q2_ROOT}/printer/q2_stock_reset.py" "${Q2_ROOT}/printer/q2-serial-proxy@.service" \
         "${tmp}/flashtool.py" "${PRINTER_USER}@${PRINTER_IP}:${PRINTER_WORK}/"
     rm -rf "$tmp"
     if [ -n "${FIRMWARE_DIR:-}" ]; then
@@ -53,6 +76,7 @@ printer_push() {
 # SSH key, current scripts on the printer, then the sudo rule for q2-printer.sh: the
 # printer's sudo password is asked once here, every later step runs without it.
 printer_prepare() {
+    printer_detect_user
     printer_ssh_key
     printer_push
     if ! pssh "sudo -n /bin/bash ${PRINTER_WORK}/q2-printer.sh status" >/dev/null 2>&1; then

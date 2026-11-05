@@ -8,6 +8,7 @@
 #   q2-printer.sh stock-stop | stock-start
 #   q2-printer.sh proxies-start | proxies-stop
 #   q2-printer.sh katapult-status <main|thr|box>
+#   q2-printer.sh stock-check                      (can a first conversion run? flashes nothing)
 #   q2-printer.sh deploy-katapult <main|thr|box> <deployer.bin>
 #   q2-printer.sh flash <main|thr|box> <firmware-dir>
 #   q2-printer.sh convert <firmware-id> [deploy]   (deploy Katapult if needed, flash all three)
@@ -17,10 +18,16 @@
 #   q2-printer.sh helixscreen-restart
 set -Eeuo pipefail
 
-USER_HOME="${Q2_PRINTER_HOME:-/home/mks}"
+# Stock firmware 01.01.02.x moves /home/mks to /home/qidi and leaves a symlink. Resolve it:
+# ownership has to be read on the real directory, not on the link.
+stock_home() {
+    [ -n "${Q2_PRINTER_HOME:-}" ] && { echo "$Q2_PRINTER_HOME"; return; }
+    if [ -e /home/mks ]; then readlink -f /home/mks; else echo /home/qidi; fi
+}
+USER_HOME="$(stock_home)"
 WORK="${USER_HOME}/q2-offload"
 FLASHTOOL="${WORK}/flashtool.py"
-STOCK_SERVICES="klipper klipper-mcu moonraker makerbase-client"
+STOCK_SERVICES="klipper klipper-mcu moonraker makerbase-client qidi-client qidi-tuning algo_app"
 THR_DEVICE=/dev/ttyS4
 THR_BAUD=500000
 
@@ -33,10 +40,12 @@ info() { printf '==> %s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
 [ "$(id -u)" = 0 ] || die "run as root (sudo)"
+# The account the installer logs in with: not always the owner of the home directory
+work_owner() { echo "${SUDO_USER:-$(stat -c %U "$USER_HOME")}"; }
 mkdir -p "$WORK"
 # The installer copies files here as the user: keep everything theirs, even what an
 # earlier root run created
-chown -R "$(stat -c %U "$USER_HOME")": "$WORK"
+chown -R "$(work_owner)": "$WORK"
 
 # Stock Qidi OS is Debian 11 with stale (or no) package lists, and bullseye is being moved
 # to archive.debian.org. Refresh the lists; if a package is still missing, switch the
@@ -106,7 +115,7 @@ cmd_backup() {
     tar czf "$out" -C "$USER_HOME" --ignore-failed-read printer_data/config \
         q2-offload/enabled-services.txt 2>/dev/null || true
     [ "$(tar tzf "$out" 2>/dev/null | wc -l)" -gt 1 ] || die "backup ${out} is empty, stopping"
-    chown -R "$(stat -c %U "$USER_HOME")": "$WORK"
+    chown -R "$(work_owner)": "$WORK"
     info "backup: $out"
 }
 
@@ -241,11 +250,12 @@ cmd_flash() {
     info "${m}: flashed"
 }
 
-# First conversion from stock: Qidi's own update scripts flash a Katapult deployer while
-# the stock firmware still runs (they read its dictionary to find the reset command).
+# First conversion from stock: a Katapult deployer goes through Qidi's bootloader, while the
+# stock firmware still runs. Same steps as Qidi's mcu_update*.sh: reset into the bootloader
+# (q2_stock_reset.py), wait for it, write with hid-flash, the tool on the stock image.
 # Marker written once Katapult is confirmed on an MCU. After a Klipper flash a USB MCU no
 # longer shows up as Katapult, and its USB name cannot tell our Klipper from Qidi's stock
-# one, so without the marker a resumed conversion would run Qidi's script on our firmware.
+# one, so without the marker a resumed conversion would run the stock flash on our firmware.
 katapult_marker() { echo "${WORK}/katapult-$1"; }
 
 has_katapult() {
@@ -258,27 +268,87 @@ has_katapult() {
     fi
 }
 
+first_device() {
+    local dev pattern
+    for pattern in "$@"; do
+        dev="$(one_device "$pattern")"
+        [ -n "$dev" ] && { echo "$dev"; return 0; }
+    done
+    return 0
+}
+
+# Where each MCU shows up running stock firmware, and in Qidi's bootloader
+stock_app_device() {
+    case "$1" in
+        main) first_device '/dev/serial/by-id/usb-Klipper_QIDI_MAIN_*' "/dev/serial/by-id/usb-Klipper_${MCU_TYPE[main]}_*" ;;
+        box)  first_device '/dev/serial/by-id/usb-Klipper_QIDI_BOX_V2*-if00' "/dev/serial/by-id/usb-Klipper_${MCU_TYPE[box]}_*-if00" ;;
+        thr)  echo "$THR_DEVICE" ;;
+    esac
+}
+
+stock_boot_device() {
+    case "$1" in
+        main) first_device '/dev/serial/by-id/usb-*_DRIVER_BOOT*' '/dev/serial/by-id/usb-*-CDC_*' ;;
+        box)  first_device '/dev/serial/by-id/usb-*MKS_COLOR*_BOOT*' ;;
+        thr)  echo "$THR_DEVICE" ;;
+    esac
+}
+
+# Read only: no service stopped and nothing written to an MCU. Stops a first conversion
+# before anything is flashed.
+cmd_stock_check() {
+    local m dev missing=0
+    info "home: ${USER_HOME}, /home/mks: $(readlink /home/mks 2>/dev/null || echo directory), login: $(work_owner)"
+    if [ -x "${USER_HOME}/hid-flash" ]; then
+        info "hid-flash: ${USER_HOME}/hid-flash"
+    else
+        echo "MISSING: ${USER_HOME}/hid-flash, the tool that writes through Qidi's bootloader"
+        missing=1
+    fi
+    command -v python3 >/dev/null || [ -x "${USER_HOME}/klippy-env/bin/python" ] \
+        || { echo "MISSING: Python"; missing=1; }
+    for m in main thr box; do
+        if [ -e "$(katapult_marker "$m")" ]; then info "${m}: already on Katapult"; continue; fi
+        dev="$(stock_app_device "$m")"
+        if [ "$m" != thr ] && [ -n "$(katapult_device "$m")" ]; then info "${m}: already on Katapult"; continue; fi
+        if [ -n "$dev" ] && [ -e "$dev" ]; then
+            info "${m}: found on ${dev}"
+        else
+            echo "MISSING: the ${m} MCU"
+            missing=1
+        fi
+    done
+    [ "$missing" = 0 ] || die "this printer cannot be converted as is; nothing was flashed"
+    info "ready for the first conversion"
+}
+
 cmd_deploy_katapult() {
-    local m="${1:?main|thr|box}" bin="${2:?deployer.bin}" box
+    local m="${1:?main|thr|box}" bin="${2:?deployer.bin}" app boot i
     [ -s "$bin" ] || die "missing deployer $bin"
     if has_katapult "$m"; then
         info "${m}: Katapult already installed, skipping the deployer"
         return 0
     fi
-    # Qidi's scripts read the dictionary of the running stock firmware: stock Klipper must
-    # not hold the port, and the scripts expect the mks home directory
+    [ -x "${USER_HOME}/hid-flash" ] || die "${USER_HOME}/hid-flash not found on this stock image"
+    # The stock firmware's dictionary is read below: stock Klipper must not hold the port
     release_devices
+    app="$(stock_app_device "$m")"
+    [ -n "$app" ] && [ -e "$app" ] || die "${m}: stock firmware not found (no MCU device)"
+    if [ "$m" = thr ]; then
+        "$(python_bin)" "${WORK}/q2_stock_reset.py" "$app" --baud "$THR_BAUD"
+        sleep 2
+    else
+        "$(python_bin)" "${WORK}/q2_stock_reset.py" "$app"
+        for i in 1 2 3 4 5 6 7 8 9 10; do
+            boot="$(stock_boot_device "$m")"
+            [ -n "$boot" ] && break
+            sleep 1
+        done
+        [ -n "$boot" ] || die "${m}: Qidi's bootloader did not appear after the reset; nothing was flashed"
+    fi
+    [ "$m" = thr ] && boot="$THR_DEVICE"
     cd "$USER_HOME"
-    case "$m" in
-        main) HOME="$USER_HOME" bash "${USER_HOME}/mcu_update.sh" "$bin" ;;
-        thr)  HOME="$USER_HOME" bash "${USER_HOME}/mcu_update_THR.sh" "$bin" ;;
-        box)
-            box="$(one_device '/dev/serial/by-id/usb-Klipper_QIDI_BOX_V2*-if00')"
-            [ -n "$box" ] || box="$(klipper_device box)"
-            [ -n "$box" ] || die "Qidi Box not found (usb-Klipper_QIDI_BOX_V2* or usb-Klipper_stm32f401xc*)"
-            HOME="$USER_HOME" bash "${USER_HOME}/mcu_update_BOX_to_v2.sh" "$bin" "$box"
-            ;;
-    esac
+    HOME="$USER_HOME" "${USER_HOME}/hid-flash" "$bin" "$boot" || die "${m}: hid-flash failed"
     if [ "$m" = thr ]; then sleep 2; else wait_katapult "$m"; fi
     cmd_katapult_status "$m"
 }
@@ -297,7 +367,7 @@ cmd_convert() {
         cmd_flash "$m" "${WORK}/firmware"
     done
     echo "$id" > "${WORK}/firmware-id"
-    chown "$(stat -c %U "$USER_HOME")": "${WORK}/firmware-id"
+    chown "$(work_owner)": "${WORK}/firmware-id"
     info "all MCUs on firmware ${id}"
 }
 
@@ -306,7 +376,7 @@ cmd_convert() {
 # stock password, so this grants nothing new.
 cmd_sudoers() {
     local u tmp
-    u="$(stat -c %U "$USER_HOME")"
+    u="$(work_owner)"
     tmp="$(mktemp)"
     printf '# q2-offload: host-driven printer maintenance
 %s ALL=(root) NOPASSWD: /bin/bash %s/q2-printer.sh *, /usr/bin/bash %s/q2-printer.sh *
@@ -343,6 +413,7 @@ case "$sub" in
     proxies-start) cmd_proxies_start ;;
     proxies-stop) cmd_proxies_stop ;;
     katapult-status) cmd_katapult_status "$@" ;;
+    stock-check) cmd_stock_check "$@" ;;
     deploy-katapult) cmd_deploy_katapult "$@" ;;
     flash) cmd_flash "$@" ;;
     convert) cmd_convert "$@" ;;

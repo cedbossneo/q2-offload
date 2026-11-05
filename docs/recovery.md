@@ -1,5 +1,17 @@
 # Risks, recovery and going back to stock
 
+## Stock firmware 01.01.02 and newer
+
+These versions move `/home/mks` to `/home/qidi`, leave a symlink, create a `qidi` account and
+remove the sudo rights of `mks`. The installer detects this, logs in as `qidi`, and checks the
+printer before a first conversion (`q2-printer.sh stock-check`): it stops with the reason and
+nothing flashed if `hid-flash`, an MCU or root access is missing.
+
+No conversion from these versions has been tested yet, and a printer that left the factory on
+one may not have `hid-flash`. If the check stops or the conversion fails, please open an issue
+with its output. Installing the stock 1.1.1 package first is not required by anything we know
+of, and we do not provide a way to do it.
+
 ## What can go wrong when flashing
 
 | Step | Protection | If it fails |
