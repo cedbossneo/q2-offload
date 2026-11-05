@@ -1,0 +1,9 @@
+[Unit]
+Description=Keep the OrcaSlicer filament presets in step with Spoolman (q2-offload)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+
+[Install]
+WantedBy=timers.target
