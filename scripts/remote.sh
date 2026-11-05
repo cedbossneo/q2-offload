@@ -18,6 +18,7 @@ proot() { ssh -tt "${SSH_OPTS[@]}" "${PRINTER_USER}@${PRINTER_IP}" sudo /bin/bas
 # Before a first conversion, with no change to the MCUs: can this account work here, and does
 # the stock image have what the flash needs? Stops with the reason before anything is flashed.
 printer_check_stock() {
+    printer_fetch_hid_flash
     proot stock-check || die "the printer is not ready for a first conversion; nothing was flashed. See docs/recovery.md"
 }
 
@@ -115,6 +116,20 @@ printer_check_box() {
         echo "To use it, run the installer with --box instead."
         confirm "Continue without the Box?" y || die "stopped: run again with --box"
     fi
+}
+
+# First conversion only: newer stock firmware does not ship hid-flash, give the printer Qidi's.
+printer_fetch_hid_flash() {
+    local tmp
+    pssh "test -x /home/${PRINTER_USER}/hid-flash || test -x ${PRINTER_WORK}/hid-flash" && return 0
+    info "The printer has no hid-flash: getting it from Qidi's 1.1.1 firmware release (137 MB download)"
+    tmp="$(mktemp -d)"
+    bash "${Q2_ROOT}/scripts/fetch-hid-flash.sh" "${tmp}/hid-flash" \
+        || { rm -rf "$tmp"; die "could not get hid-flash from ${HID_FLASH_URL}; nothing was flashed"; }
+    scp -q "${SSH_OPTS[@]}" "${tmp}/hid-flash" "${PRINTER_USER}@${PRINTER_IP}:${PRINTER_WORK}/hid-flash"
+    rm -rf "$tmp"
+    pssh "chmod 755 ${PRINTER_WORK}/hid-flash && echo '${HID_FLASH_SHA256}  ${PRINTER_WORK}/hid-flash' | sha256sum -c --quiet" \
+        || die "hid-flash was not copied correctly to the printer; nothing was flashed"
 }
 
 # First conversion only: fetch and verify the pinned Katapult deployers, copy them over.
