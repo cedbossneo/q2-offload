@@ -37,7 +37,8 @@ slot.
 ## What you need
 
 - A Qidi Q2 with a Qidi Box (one unit), on the stock Qidi OS, reachable over SSH
-  (`mks` / `makerbase`).
+  (`mks` / `makerbase`). Converting from stock firmware 01.01.02 or newer is
+  [not tested yet](docs/recovery.md#stock-firmware-010102-and-newer).
   No Box? Install with `./install.sh --no-box`: only the mainboard and toolhead are flashed,
   Happy Hare is skipped, and the toolhead sensor pauses the print on a filament runout
   (`./install.sh --box` switches back). The installer checks for a Box before flashing.
@@ -172,6 +173,10 @@ slicer presets are yours:
 
   Z now stays off at boot unless a power-loss resume is pending, so without `idle_speed`
   or these limits the fan stops as soon as the motors do.
+- **Chamber:** to match the stock firmware, in `[heater_generic chamber]` add
+  `soft_start_time: 5` and `soft_start_power: 0.3`, and set `shutdown_speed: 1.0` in
+  `[controller_fan chamber_fan]` and `[fan_generic chamber_circulation_fan]`. Needs the same
+  Klipper version as the board fan options.
 - **Faster bed mesh (optional):** in `printer.cfg`, `speed: 200` and `horizontal_move_z: 3`
   in `[bed_mesh]`, `lift_speed: 10` and `sample_retract_dist: 2` in `[load_cell_probe]`.
 - **Slicer:** update the start G-code ([purge lines](docs/orca-slicer.md#start-g-code)). The

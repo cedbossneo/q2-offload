@@ -10,13 +10,18 @@ useradd -m mks; W=/home/mks/q2-offload; mkdir -p $W/firmware $W/deployer /dev/se
 cp "$REPO/printer/q2-printer.sh" $W/; cp "$REPO/tests/flash-sim/flashtool.py" $W/flashtool.py
 for m in main thr box; do mkdir -p $W/firmware/$m; cp "$FW/q2-$m.bin" $W/firmware/$m/klipper.bin; cp "$FW/q2-$m.dict" $W/firmware/$m/klipper.dict; done
 for f in mcu thr mmu; do echo x > $W/deployer/$f-deployer.bin; done
-# stock scripts: turn a stock device into katapult
-printf 'mv /dev/serial/by-id/usb-Klipper_stm32f407xx_X-if00 /dev/serial/by-id/usb-katapult_stm32f407xx_X-if00\n' > /home/mks/mcu_update.sh
-printf 'rm -f /tmp/thr-stock\n' > /home/mks/mcu_update_THR.sh
-printf 'mv "$2" /dev/serial/by-id/usb-katapult_stm32f401xc_Y-if00\n' > /home/mks/mcu_update_BOX_to_v2.sh
+# Stock flash: the reset moves a stock device to its bootloader name, hid-flash to Katapult
+cp "$REPO/tests/flash-sim/q2_stock_reset.py" $W/q2_stock_reset.py
+install -m 755 "$REPO/tests/flash-sim/hid-flash" /home/mks/hid-flash
 rm -f /dev/ttyS4; touch /dev/ttyS4
 echo "== scenario 1: first conversion (stock), deploy + flash"
 touch /dev/serial/by-id/usb-Klipper_stm32f407xx_X-if00 /dev/serial/by-id/usb-Klipper_QIDI_BOX_V2_Y-if00 /tmp/thr-stock
+bash $W/q2-printer.sh stock-check
+mv /home/mks/hid-flash /home/mks/hid-flash.off
+if bash $W/q2-printer.sh stock-check; then echo "FAIL: stock-check passed without hid-flash"; exit 1; fi
+if bash $W/q2-printer.sh deploy-katapult main $W/deployer/mcu-deployer.bin; then echo "FAIL: deployed without hid-flash"; exit 1; fi
+[ -e /dev/serial/by-id/usb-Klipper_stm32f407xx_X-if00 ] || { echo "FAIL: MCU touched without hid-flash"; exit 1; }
+mv /home/mks/hid-flash.off /home/mks/hid-flash
 bash $W/q2-printer.sh convert TESTID deploy
 ls /dev/serial/by-id; [ "$(cat $W/firmware-id)" = TESTID ]
 echo "== scenario 2: update (already Klipper + Katapult), re-run deploy is skipped"
@@ -31,5 +36,14 @@ bash $W/q2-printer.sh sudoers
 cat /etc/sudoers.d/q2-offload
 su mks -c "sudo -n /bin/bash $W/q2-printer.sh detect" >/dev/null || { echo "FAIL: passwordless rule does not match"; exit 1; }
 if su mks -c "sudo -n /bin/true" 2>/dev/null; then echo "FAIL: rule is too broad"; exit 1; fi
+echo "== scenario 4: stock firmware 01.01.02+ layout, /home/mks is a symlink to /home/qidi"
+useradd -m qidi; cp -a /home/mks/. /home/qidi/; rm -rf /home/mks; ln -s /home/qidi /home/mks
+chown -R qidi: /home/qidi
+out="$(SUDO_USER=mks bash /home/qidi/q2-offload/q2-printer.sh stock-check)"; echo "$out"
+[ "$(echo "$out" | grep -c "home: /home/qidi")" = 1 ] || { echo "FAIL: the symlink was not resolved"; exit 1; }
+[ "$(stat -c %U /home/qidi/q2-offload)" = mks ] || { echo "FAIL: work directory not left to the login"; exit 1; }
+SUDO_USER=mks bash /home/qidi/q2-offload/q2-printer.sh sudoers
+su mks -c "sudo -n /bin/bash /home/mks/q2-offload/q2-printer.sh detect" >/dev/null \
+    || { echo "FAIL: passwordless rule does not match through the symlink"; exit 1; }
 echo "== flashtool calls"; cat /tmp/flashtool.log
 echo "flash simulation OK"

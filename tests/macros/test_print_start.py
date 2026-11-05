@@ -77,6 +77,23 @@ def test_adaptive_mesh_is_saved_as_a_profile():
     assert gcode.index("BED_MESH_CALIBRATE ADAPTIVE=1") < gcode.index("BED_MESH_PROFILE SAVE=ADAPTIVE")
 
 
+def test_m204_never_exceeds_the_printer_limit():
+    printer = {"configfile": {"settings": {"printer": {"max_accel": MAX_ACCEL}}}}
+    def limit(**params):
+        out = load("gcode_macro M204").render(printer=printer, params=params)
+        return [line.strip() for line in out.splitlines() if "SET_VELOCITY_LIMIT" in line]
+    assert limit(S="10000") == ["SET_VELOCITY_LIMIT ACCEL=7000.0"]
+    assert limit(S="5000") == ["SET_VELOCITY_LIMIT ACCEL=5000.0"]
+    assert limit(P="9000", T="8000") == ["SET_VELOCITY_LIMIT ACCEL=7000.0"]
+
+
+def test_polar_cooler_stops_at_the_end_and_on_cancel():
+    cfg = configparser.RawConfigParser(strict=False)
+    cfg.read(CFG)
+    for section in ("gcode_macro PRINT_END", "gcode_macro _USER_CANCEL_EXTRA"):
+        assert "M106 P4 S0" in cfg[section]["gcode"], section
+
+
 if __name__ == "__main__":
     tests = [f for name, f in sorted(globals().items()) if name.startswith("test_")]
     for test in tests:

@@ -1,0 +1,7 @@
+#!/bin/sh
+# Fake of Qidi's hid-flash: the deployer replaces the bootloader with Katapult
+case "$2" in
+    *DRIVER_BOOT*) mv "$2" /dev/serial/by-id/usb-katapult_stm32f407xx_X-if00 ;;
+    *MKS_COLOR*) mv "$2" /dev/serial/by-id/usb-katapult_stm32f401xc_Y-if00 ;;
+    *ttyS4) rm -f /tmp/thr-stock ;;
+esac

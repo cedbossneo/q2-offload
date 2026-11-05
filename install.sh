@@ -83,6 +83,8 @@ cli_printer="${PRINTER_IP:-}"; cli_components="${COMPONENTS:-}"; cli_channel="${
 cli_box="${BOX:-}"
 # shellcheck disable=SC1090
 [ -f "$SETTINGS" ] && . "$SETTINGS"
+# remote.sh computed this before the saved account was known
+PRINTER_USER="${PRINTER_USER:-mks}"; PRINTER_WORK="/home/${PRINTER_USER}/q2-offload"
 [ -n "$cli_printer" ] && PRINTER_IP="$cli_printer"
 [ -n "$cli_components" ] && COMPONENTS="$cli_components"
 [ -n "$cli_channel" ] && UPDATE_CHANNEL="$cli_channel"
@@ -114,6 +116,7 @@ save_settings() {
     mkdir -p "$STATE_DIR"
     cat > "$SETTINGS" <<EOF
 PRINTER_IP=${PRINTER_IP}
+PRINTER_USER=${PRINTER_USER:-mks}
 HOST_IP=${HOST_IP}
 COMPONENTS=${COMPONENTS}
 UPDATE_CHANNEL=${UPDATE_CHANNEL}
@@ -256,6 +259,7 @@ EOF
     if [ -z "$(printer_firmware_id)" ] \
         && confirm "Is this the first conversion from Qidi's STOCK firmware?" y; then
         # Also safe on a partly converted printer: MCUs already running Katapult are skipped
+        printer_check_stock
         printer_fetch_deployers
         printer_convert deploy
     else
