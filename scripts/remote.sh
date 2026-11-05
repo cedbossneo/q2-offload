@@ -105,6 +105,7 @@ printer_check_box() {
         fi
         confirm "Install without a Qidi Box (same as --no-box: mainboard and toolhead only, no Happy Hare)?" n \
             || die "stopped before any change: connect the Box, or run with --no-box"
+        # shellcheck disable=SC2034  # read by has_box in host.sh
         BOX=0
         save_settings
         info "Continuing without a Qidi Box (saved; ./install.sh --box to change it later)"
