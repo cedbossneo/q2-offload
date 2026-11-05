@@ -1,6 +1,8 @@
 # OrcaSlicer profiles
 
-`slicer/orca/` holds the OrcaSlicer presets we print with on a q2-offload Q2 + Qidi Box:
+`slicer/orca/` holds the OrcaSlicer presets we print with on a q2-offload Q2 + Qidi Box,
+and a plugin that adds a Box tab and one preset per Spoolman spool. Use OrcaSlicer
+**2.5.0-rc or newer**: printing through the printer agent needs fixes that are not in 2.4.
 
 | File | Preset |
 |---|---|
@@ -15,11 +17,60 @@ They inherit Orca's own Qidi Q2 and Generic presets, so only the differences are
 1. In OrcaSlicer, add the stock **Qidi Q2 0.4 nozzle** printer once (the presets inherit it).
 2. **File → Import → Import Configs…** and select the six JSON files.
 3. Select the **Q2 Offload 0.4 nozzle** printer, click the Wi-Fi icon next to it and set
-   the host type to **Octo/Klipper** and the host to `http://<klipper-host>` (nginx forwards
-   the API to Moonraker).
+   the host type to **Octo/Klipper** and the host to `http://<klipper-host>`, **without a
+   port** (nginx forwards the API to Moonraker; see [the printer agent](#the-printer-agent)).
 4. Set one filament per Box gate (T0–T3). For your own filaments, start from one of the
    templates, or copy the fields listed in [Multi-material fields](#multi-material-fields)
    into your preset.
+
+## The printer agent
+
+The printer preset uses Orca's `qidi` printer agent. q2-offload publishes the Happy Hare
+gates in the layout of the stock Box firmware (`host/extras/qidi_box_compat.py`), so with
+**Use printer agents** on in Orca's developer settings:
+
+- **Sync filaments** reads the colours and materials of the four slots;
+- the print dialog lets you pick a slot per filament: `PRINT_START` turns the choice into a
+  Happy Hare tool map (`MMU_TTG_MAP`), for that print only.
+
+Good to know:
+
+- **Keep the address without `:7125`.** The agent sends a placeholder access code
+  (`88888888`) when none is set, which Moonraker rejects. nginx drops that exact value;
+  going straight to Moonraker skips this and Orca reports it cannot connect.
+- **Switching an existing printer from the `moonraker` agent:** Orca stores the agent with
+  the printer, so it keeps looking under the old one and reports it cannot connect. Close
+  Orca, and in `OrcaSlicer.conf`, under `local_machines`, set `printer_agent_id` of the
+  printer to `qidi`.
+- **Timelapse and Auto bed leveling in the print dialog have no effect:** the agents do not
+  send them to the printer. The adaptive mesh always runs, and timelapse follows Moonraker's
+  settings.
+
+## Spool presets
+
+Orca matches a slot to a preset by `filament_id`, and a preset with a parent takes the id of
+that parent, so it cannot tell two spools of the same PLA apart. q2-offload therefore
+generates one parentless preset per spool from Spoolman (`scripts/orca-spool-presets.py`,
+`q2-spool-presets.timer`, every minute), with the id `QD_1_0_<10000 + spool id>`, and the
+Box publishes that number for the spool in each gate.
+
+**Install the plugin once:** download
+[`slicer/orca/plugins/q2_spool_presets.py`](../slicer/orca/plugins/q2_spool_presets.py),
+then **Plugins → Install local plugin**, and enable it. A **Q2 Box** tab appears:
+
+![The Q2 Box tab](images/q2-box-tab.png)
+
+- The first time, Orca denies the network access while it asks: answer **Yes**, then click
+  **Update**. Reinstalling the plugin asks again.
+- It shows each spool with what is left on it, the Box temperature and humidity, and
+  installs the presets on its own when the printer connects and while the tab is open.
+- Then run **Sync filaments** without "Color only": each slot gets the preset of its spool.
+
+Settings come from Spoolman, so edit them there: the Spoolman columns (colour, density,
+diameter, nozzle temperature), then any filament extra field named `orca_<option>`, which
+wins over them (`orca_pressure_advance`, `orca_nozzle_temperature`…).
+`orca_base_preset` chooses the Orca preset to start from (`SUNLU PETG @System`); the default
+is the Generic preset of the material. Fields must exist in Spoolman (Settings → Extra fields).
 
 ## Start G-code
 
@@ -29,7 +80,12 @@ PRINT_START BED=… HOTEND=… CHAMBER=… EXTRUDER=… INITIAL_TOOL={initial_to
     TOTAL_TOOLCHANGES=!total_toolchanges! REFERENCED_TOOLS=!referenced_tools!
     TOOL_COLORS=!colors! TOOL_TEMPS=!temperatures! TOOL_MATERIALS=!materials!
     FILAMENT_NAMES=!filament_names! PURGE_VOLUMES=!purge_volumes!
-; purge lines at the front of the bed
+M83
+G92 E0
+G4 P3000
+_BOX_PURGE_LINES FLOW={outer_wall_volumetric_speed} HEIGHT=[initial_layer_print_height]
+    MIN_X={first_layer_print_min[0]} MIN_Y={first_layer_print_min[1]}
+    MAX_X={first_layer_print_max[0]} MAX_Y={first_layer_print_max[1]}
 ```
 
 - The `!…!` values are filled in by Happy Hare's Moonraker component when the file is
@@ -40,9 +96,13 @@ PRINT_START BED=… HOTEND=… CHAMBER=… EXTRUDER=… INITIAL_TOOL={initial_to
   TPU detection (sync feedback off), homing, nozzle wipe, second homing with a clean
   nozzle, bed and chamber heating, Z tilt, adaptive bed mesh, nozzle heating, then Happy
   Hare setup and load of the first tool with a purge into the bucket.
-- The two purge lines at the front of the bed only prime the nozzle; the filament is
-  already loaded. `M83` is needed there because Orca only switches to relative extrusion
-  after the start G-code.
+- The mesh covers the part with a 10 mm margin (Klipper's `ADAPTIVE=1`). The two purge
+  lines go 5 mm in front of the first layer, skirt and brim included, so they stay inside
+  it; behind the part if there is no room in front, and skipped on a full plate. They only
+  prime the nozzle; the filament is already loaded. `M83` is needed there because Orca only
+  switches to relative extrusion after the start G-code.
+- Macros named `_BOX_…`: Klipper cuts a command name at its first digit, so a macro with a
+  digit in the middle of its name loads fine and then fails with `Unknown command`.
 
 ## End G-code
 
