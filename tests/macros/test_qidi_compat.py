@@ -91,6 +91,14 @@ def test_invalid_slot_is_ignored():
     assert slot_map({"value_t0": "slot9", "value_t1": "other"}) == []
 
 
+def test_no_box_printer_has_nothing_to_do():
+    cfg = configparser.RawConfigParser(strict=False)
+    cfg.read(ROOT / "config/klipper/gcode_macro_mmu.cfg")
+    template = jinja2.Environment("{%", "%}", "{", "}").from_string(cfg["gcode_macro _BOX_APPLY_SLOT_MAP"]["gcode"])
+    rendered = template.render(printer={"save_variables": {"variables": {"value_t0": "slot1"}}})
+    assert not rendered.strip().replace("# No Happy Hare on a Q2 without a Box (install.sh --no-box): no tool map to set", "").strip()
+
+
 def test_print_start_applies_the_map_first():
     cfg = configparser.RawConfigParser(strict=False)
     cfg.read(ROOT / "config/klipper/gcode_macro_mmu.cfg")
