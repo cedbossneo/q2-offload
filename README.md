@@ -17,10 +17,14 @@ it forwards the three MCU serial links over the network, runs the touchscreen
  └──────────────────────────────┘
 ```
 
-Everything is configured: the Klipper configuration for the Q2 (load cell probing, 200 MHz
-mainboard, 120 MHz toolhead), Happy Hare for the Qidi Box (NFC tags → Spoolman, drying
-with a keep-dry watchdog and spool rotation), purge bucket and chute macros, power-loss
-recovery, and the web UIs.
+Everything is configured: the Klipper configuration for the Q2 (load cell probing, adaptive
+bed mesh, 200 MHz mainboard, 120 MHz toolhead), Happy Hare for the Qidi Box (NFC tags →
+Spoolman, drying with a keep-dry watchdog and spool rotation, a dialog to retry a failed
+load), purge bucket and chute macros, power-loss recovery, the web UIs, and an OrcaSlicer
+integration: the slicer sees the Box, and selects the preset of the exact spool in each
+slot.
+
+![The Q2 Box tab in OrcaSlicer](docs/images/q2-box-tab.png)
 
 > [!CAUTION]
 > This replaces Qidi's firmware on three microcontrollers. The **first** conversion
@@ -69,8 +73,8 @@ each step that touches the printer, and makes a backup of the printer config fir
 4. installs HelixScreen on the touchscreen and points it at the host.
 
 Then calibrate the machine: [docs/calibration.md](docs/calibration.md).
-Slicer: OrcaSlicer presets for the Q2 + Box are in `slicer/orca/`, see
-[docs/orca-slicer.md](docs/orca-slicer.md).
+Slicer: OrcaSlicer 2.5 presets and the **Q2 Spool Presets** plugin (Box tab, one preset per
+Spoolman spool) are in `slicer/orca/`, see [docs/orca-slicer.md](docs/orca-slicer.md).
 
 | Service | URL |
 |---|---|
@@ -80,6 +84,7 @@ Slicer: OrcaSlicer presets for the Q2 + Box are in `slicer/orca/`, see
 | Failure detection | `http://<host>/detect/` (live score, print history, settings: [docs/failure-detection.md](docs/failure-detection.md)) |
 | autopa | `http://<host>/autopa/` |
 | Spoolman | `http://<host>:7912/` |
+| Spool presets for OrcaSlicer | `http://<host>/q2-spools/index.json` (read by the plugin, regenerated every minute) |
 
 Installs made before Mainsail moved to port 80 keep Fluidd on 80 and Mainsail on 81. To
 switch, set `MAINSAIL_PORT=80` and `FLUIDD_PORT=81` in `~/.config/q2-offload/settings.env`,
@@ -143,6 +148,28 @@ The printer board gets a sudo rule that lets its `mks` user run `q2-offload/q2-p
 (and nothing else) as root without a password, so the host can drive it non-interactively.
 `mks` already has full sudo with the stock password, so this grants nothing new.
 
+**Updating an existing install.** These need a manual step, because `printer.cfg` and your
+slicer presets are yours:
+
+- **Board fan:** once the update has moved Klipper to this version (`temperature_limits`
+  comes from its patch 0009, and an older Klipper refuses the option), add to
+  `[controller_fan board_fan]` in `printer.cfg`, then restart Klipper:
+
+  ```ini
+  stepper: stepper_x, stepper_y, stepper_z, stepper_z1, extruder
+  idle_timeout: 60
+  idle_speed: 1.0
+  temperature_limits: temperature_sensor Mainboard_MCU:45, heater_generic chamber:40
+  ```
+
+  Z now stays off at boot unless a power-loss resume is pending, so without `idle_speed`
+  or these limits the fan stops as soon as the motors do.
+- **Faster bed mesh (optional):** in `printer.cfg`, `speed: 200` and `horizontal_move_z: 3`
+  in `[bed_mesh]`, `lift_speed: 10` and `sample_retract_dist: 2` in `[load_cell_probe]`.
+- **Slicer:** update the start G-code ([purge lines](docs/orca-slicer.md#start-g-code)). The
+  mesh now covers only the part, so the old fixed lines at the front of the bed fall
+  outside it.
+
 ## What is in here
 
 | Path | |
@@ -152,7 +179,7 @@ The printer board gets a sudo rule that lets its `mks` user run `q2-offload/q2-p
 | `patches/happy-hare/` | changes not yet merged upstream ([#1368](https://github.com/moggieuk/Happy-Hare/pull/1368), [#1370](https://github.com/moggieuk/Happy-Hare/pull/1370), drying cycle in the status for the Box page); dropped automatically once upstream |
 | `firmware/configs/` | Klipper build configs for the three MCUs |
 | `config/klipper/` | Klipper configuration and macros for the Q2 |
-| `slicer/orca/` | OrcaSlicer printer, process and filament presets ([docs/orca-slicer.md](docs/orca-slicer.md)) |
+| `slicer/orca/` | OrcaSlicer printer, process and filament presets, and the Q2 Spool Presets plugin ([docs/orca-slicer.md](docs/orca-slicer.md)) |
 | `config/happy-hare/` | Happy Hare menuconfig for Qidi Box + Q2, and the settings applied on top of it |
 | `host/`, `printer/` | systemd units, nginx, Moonraker config, printer board helper |
 | `detect/`, `web/` | the failure detection service ([docs/failure-detection.md](docs/failure-detection.md)), the Box drying and failure detection pages |

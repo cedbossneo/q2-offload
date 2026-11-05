@@ -1,0 +1,9 @@
+[Unit]
+Description=Generate the OrcaSlicer filament presets from Spoolman (q2-offload)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=@USER@
+ExecStart=/usr/bin/python3 @Q2_ROOT@/scripts/orca-spool-presets.py --spoolman http://localhost:7912 --orca-ref @ORCA_PROFILES_REF@ --out @HOME@/printer_data/web/spools --cache @HOME@/printer_data/web/.spool-profile-cache
+Nice=10

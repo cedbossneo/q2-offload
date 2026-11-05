@@ -63,9 +63,18 @@ def test_homing_leaves_the_configured_acceleration():
 
 
 def test_orca_start_gcode_travels_are_not_too_fast():
+    # The start G-code travels through _BOX_PURGE_LINES: check both
     start = json.loads(MACHINE.read_text())["machine_start_gcode"]
-    speeds = [int(f) for f in re.findall(r"^G1 X[^\n]*F(\d+)$", start, re.M)]
+    assert "_BOX_PURGE_LINES" in start
+    purge = pathlib.Path(CFG).with_name("q2_purge.cfg").read_text()
+    section = purge[purge.index("[gcode_macro _BOX_PURGE_LINES]"):purge.index("[gcode_macro BUCKET_PURGE]")]
+    speeds = [int(f) for f in re.findall(r"^\s*G1 X[^\n]*F(\d+)$", start + "\n" + section, re.M)]
     assert speeds and max(speeds) <= MAX_START_TRAVEL_F
+
+
+def test_adaptive_mesh_is_saved_as_a_profile():
+    gcode = load("gcode_macro PRINT_START").render(printer=PRINTER, params={"BED": "60", "HOTEND": "210"})
+    assert gcode.index("BED_MESH_CALIBRATE ADAPTIVE=1") < gcode.index("BED_MESH_PROFILE SAVE=ADAPTIVE")
 
 
 if __name__ == "__main__":
