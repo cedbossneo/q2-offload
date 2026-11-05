@@ -59,6 +59,11 @@ DEPLOYER_SHA256=8b74d47dec89aab19059f66b168e1ff448467b7f9a0f6e9d48589b0c0b9a5a0b
 DEPLOYER_MCU_SHA256=6ca9d065a6317d732589557dcc31f43fc427c36516f08d515832d4c4675290f6
 DEPLOYER_THR_SHA256=890948b73bce0e3ee4a264cf3d0610e5e616279bb554f819e45e9eefac1340c9
 DEPLOYER_MMU_SHA256=c693875a922322bd57ab9d3bb49a4250da34402dc2e78997f90bf78337f2d8fa
+# The tool that writes those deployers, for a printer without it (scripts/fetch-hid-flash.sh).
+# Only the binary is pinned: it is what runs on the printer. Never auto-bumped either.
+HID_FLASH_URL=https://github.com/QIDITECH/QIDI_Q2/releases/download/Q2_V1.1.1/Q2_V1.1.1.zip
+HID_FLASH_PACKAGE=QD_Q2_SOC_V1.1.1_20260109_Release
+HID_FLASH_SHA256=b53abfda5f9c295e2ce1cf59b1fd04df7deac043810aa6ac77a3bf4857e55a7e
 
 # OrcaSlicer filament library used to generate the spool presets (scripts/orca-spool-presets.py)
 ORCA_PROFILES_REF=v2.5.0-rc

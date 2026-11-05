@@ -121,6 +121,9 @@ jobs:
         with:
           name: firmware
           path: dist
+      - name: hid-flash from Qidi's release
+        # The first conversion of a printer without it depends on this download
+        run: bash scripts/fetch-hid-flash.sh "$RUNNER_TEMP/hid-flash"
       - name: Simulated flash
         run: |
           # Both registries rate-limit anonymous pulls from shared runners: retry, alternating

@@ -6,12 +6,17 @@ These versions move `/home/mks` to `/home/qidi`, leave a symlink, create a `qidi
 delete the sudo rules of `mks`. The new account's stock password is `qiditech`. It reportedly
 has no sudo, so the installer keeps logging in as `mks`, which users report still works with its
 stock password `makerbase` and sudo, and checks the printer before a first conversion
-(`q2-printer.sh stock-check`): it stops with the reason and nothing flashed if `hid-flash`, an
-MCU or root access is missing. To use another account, set `PRINTER_USER` in
+(`q2-printer.sh stock-check`): it stops with the reason and nothing flashed if an MCU or root
+access is missing. To use another account, set `PRINTER_USER` in
 `~/.config/q2-offload/settings.env`.
 
-No conversion from these versions has been tested yet, and a printer that left the factory on
-one may not have `hid-flash`. If the check stops or the conversion fails, please open an issue
+These versions flash from the screen app and their package no longer contains `hid-flash`, the
+tool that writes through Qidi's bootloader, so a printer that left the factory on one may not
+have it. The installer then downloads it from Qidi's public 1.1.1 release (137 MB), checks its
+SHA-256 and copies it to the printer. A printer updated from 1.1.x normally keeps its own.
+
+No conversion from these versions has been tested yet, including with that copy of `hid-flash`
+on a recent bootloader. If the check stops or the conversion fails, please open an issue
 with its output. Installing the stock 1.1.1 package first is not required by anything we know
 of, and we do not provide a way to do it.
 

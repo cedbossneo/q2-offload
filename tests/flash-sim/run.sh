@@ -21,7 +21,10 @@ mv /home/mks/hid-flash /home/mks/hid-flash.off
 if bash $W/q2-printer.sh stock-check; then echo "FAIL: stock-check passed without hid-flash"; exit 1; fi
 if bash $W/q2-printer.sh deploy-katapult main $W/deployer/mcu-deployer.bin; then echo "FAIL: deployed without hid-flash"; exit 1; fi
 [ -e /dev/serial/by-id/usb-Klipper_stm32f407xx_X-if00 ] || { echo "FAIL: MCU touched without hid-flash"; exit 1; }
-mv /home/mks/hid-flash.off /home/mks/hid-flash
+# Newer stock firmware has none: the conversion uses the copy the installer brings
+mv /home/mks/hid-flash.off $W/hid-flash
+out="$(bash $W/q2-printer.sh stock-check)"; echo "$out"
+echo "$out" | grep -q "hid-flash: $W/hid-flash" || { echo "FAIL: the copy in the work directory is not used"; exit 1; }
 bash $W/q2-printer.sh convert TESTID deploy
 ls /dev/serial/by-id; [ "$(cat $W/firmware-id)" = TESTID ]
 echo "== scenario 2: update (already Klipper + Katapult), re-run deploy is skipped"
@@ -45,5 +48,15 @@ out="$(SUDO_USER=mks bash /home/qidi/q2-offload/q2-printer.sh stock-check)"; ech
 SUDO_USER=mks bash /home/qidi/q2-offload/q2-printer.sh sudoers
 su mks -c "sudo -n /bin/bash /home/mks/q2-offload/q2-printer.sh detect" >/dev/null \
     || { echo "FAIL: passwordless rule does not match through the symlink"; exit 1; }
+echo "== scenario 5: device names only Qidi's newest app knows"
+W=/home/qidi/q2-offload
+rm -f $W/katapult-main $W/katapult-box /dev/serial/by-id/*
+touch /dev/serial/by-id/usb-Klipper_02.01.01.09_X-if00 /dev/serial/by-id/usb-Klipper_QIDI_BOX_V2_VCP-if00
+out="$(SUDO_USER=mks bash $W/q2-printer.sh stock-check)"; echo "$out"
+echo "$out" | grep -q "usb-Klipper_02.01.01.09_X" || { echo "FAIL: mainboard name not recognised"; exit 1; }
+SUDO_USER=mks bash $W/q2-printer.sh deploy-katapult main $W/deployer/mcu-deployer.bin
+SUDO_USER=mks bash $W/q2-printer.sh deploy-katapult box $W/deployer/mmu-deployer.bin
+[ -e /dev/serial/by-id/usb-katapult_stm32f407xx_X-if00 ] && [ -e /dev/serial/by-id/usb-katapult_stm32f401xc_Y-if00 ] \
+    || { echo "FAIL: deployers did not reach the bootloaders"; exit 1; }
 echo "== flashtool calls"; cat /tmp/flashtool.log
 echo "flash simulation OK"

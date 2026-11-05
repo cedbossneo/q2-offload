@@ -268,7 +268,8 @@ cmd_flash() {
 
 # First conversion from stock: a Katapult deployer goes through Qidi's bootloader, while the
 # stock firmware still runs. Same steps as Qidi's mcu_update*.sh: reset into the bootloader
-# (q2_stock_reset.py), wait for it, write with hid-flash, the tool on the stock image.
+# (q2_stock_reset.py), wait for it, write with hid-flash, from the stock image if it has one,
+# otherwise the copy of Qidi's that the installer put in the work directory.
 # Marker written once Katapult is confirmed on an MCU. After a Klipper flash a USB MCU no
 # longer shows up as Katapult, and its USB name cannot tell our Klipper from Qidi's stock
 # one, so without the marker a resumed conversion would run the stock flash on our firmware.
@@ -284,6 +285,14 @@ has_katapult() {
     fi
 }
 
+hid_flash_tool() {
+    local tool
+    for tool in "${USER_HOME}/hid-flash" "${WORK}/hid-flash"; do
+        [ -x "$tool" ] && { echo "$tool"; return 0; }
+    done
+    return 1
+}
+
 first_device() {
     local dev pattern
     for pattern in "$@"; do
@@ -296,7 +305,7 @@ first_device() {
 # Where each MCU shows up running stock firmware, and in Qidi's bootloader
 stock_app_device() {
     case "$1" in
-        main) first_device '/dev/serial/by-id/usb-Klipper_QIDI_MAIN_*' "/dev/serial/by-id/usb-Klipper_${MCU_TYPE[main]}_*" ;;
+        main) first_device '/dev/serial/by-id/usb-Klipper_QIDI_MAIN_*' '/dev/serial/by-id/usb-Klipper_02.01*' "/dev/serial/by-id/usb-Klipper_${MCU_TYPE[main]}_*" ;;
         box)  first_device '/dev/serial/by-id/usb-Klipper_QIDI_BOX_V2*-if00' "/dev/serial/by-id/usb-Klipper_${MCU_TYPE[box]}_*-if00" ;;
         thr)  echo "$THR_DEVICE" ;;
     esac
@@ -305,7 +314,7 @@ stock_app_device() {
 stock_boot_device() {
     case "$1" in
         main) first_device '/dev/serial/by-id/usb-*_DRIVER_BOOT*' '/dev/serial/by-id/usb-*-CDC_*' ;;
-        box)  first_device '/dev/serial/by-id/usb-*MKS_COLOR*_BOOT*' ;;
+        box)  first_device '/dev/serial/by-id/usb-*MKS_COLOR*_BOOT*' '/dev/serial/by-id/usb-*_Virtual_ComPort_*' ;;
         thr)  echo "$THR_DEVICE" ;;
     esac
 }
@@ -313,12 +322,16 @@ stock_boot_device() {
 # Read only: no service stopped and nothing written to an MCU. Stops a first conversion
 # before anything is flashed.
 cmd_stock_check() {
-    local m dev missing=0
+    local m dev tool missing=0
     info "home: ${USER_HOME}, /home/mks: $(readlink /home/mks 2>/dev/null || echo directory), login: $(work_owner)"
-    if [ -x "${USER_HOME}/hid-flash" ]; then
-        info "hid-flash: ${USER_HOME}/hid-flash"
+    if tool="$(hid_flash_tool)"; then
+        info "hid-flash: ${tool}"
+        if ldd "$tool" 2>/dev/null | grep -q "not found"; then
+            echo "MISSING: a library hid-flash needs: $(ldd "$tool" | grep "not found" | tr -s ' \t' ' ')"
+            missing=1
+        fi
     else
-        echo "MISSING: ${USER_HOME}/hid-flash, the tool that writes through Qidi's bootloader"
+        echo "MISSING: hid-flash, the tool that writes through Qidi's bootloader"
         missing=1
     fi
     command -v python3 >/dev/null || [ -x "${USER_HOME}/klippy-env/bin/python" ] \
@@ -339,13 +352,13 @@ cmd_stock_check() {
 }
 
 cmd_deploy_katapult() {
-    local m="${1:?main|thr|box}" bin="${2:?deployer.bin}" app boot
+    local m="${1:?main|thr|box}" bin="${2:?deployer.bin}" app boot tool
     [ -s "$bin" ] || die "missing deployer $bin"
     if has_katapult "$m"; then
         info "${m}: Katapult already installed, skipping the deployer"
         return 0
     fi
-    [ -x "${USER_HOME}/hid-flash" ] || die "${USER_HOME}/hid-flash not found on this stock image"
+    tool="$(hid_flash_tool)" || die "hid-flash not found on this printer; nothing was flashed"
     # The stock firmware's dictionary is read below: stock Klipper must not hold the port
     release_devices
     app="$(stock_app_device "$m")"
@@ -364,7 +377,7 @@ cmd_deploy_katapult() {
     fi
     [ "$m" = thr ] && boot="$THR_DEVICE"
     cd "$USER_HOME"
-    HOME="$USER_HOME" "${USER_HOME}/hid-flash" "$bin" "$boot" || die "${m}: hid-flash failed"
+    HOME="$USER_HOME" "$tool" "$bin" "$boot" || die "${m}: hid-flash failed"
     if [ "$m" = thr ]; then sleep 2; else wait_katapult "$m"; fi
     cmd_katapult_status "$m"
 }
