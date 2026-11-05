@@ -1,0 +1,45 @@
+From 4d03e3eeefb213620b3f6139039759f957d98ff0 Mon Sep 17 00:00:00 2001
+From: Cedric Hauber <hauber.c@gmail.com>
+Date: Thu, 5 Nov 2026 15:04:05 +0100
+Subject: [PATCH] heaters: optional soft start when a heater turns on
+
+soft_start_time limits a heater to soft_start_power for a moment each time it turns on. The Q2's stock firmware does this for its chamber heater (30 % for 5 s), which draws a large current.
+---
+ klippy/extras/heaters.py | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/klippy/extras/heaters.py b/klippy/extras/heaters.py
+index f8ed904c..79928ed4 100644
+--- a/klippy/extras/heaters.py
++++ b/klippy/extras/heaters.py
+@@ -38,6 +38,12 @@ class Heater:
+                          is not None)
+         self.can_extrude = self.min_extrude_temp <= 0. or is_fileoutput
+         self.max_power = config.getfloat('max_power', 1., above=0., maxval=1.)
++        # Limit the power for a moment each time the heater turns on, for a
++        # heater large enough to load the power supply
++        self.soft_start_time = config.getfloat('soft_start_time', 0., minval=0.)
++        self.soft_start_power = config.getfloat('soft_start_power', 0.3,
++                                                above=0., maxval=1.)
++        self.soft_start_begin = None
+         self.min_pwm_change = self.max_power * MIN_PWM_CHANGE_RATIO
+         self.smooth_time = config.getfloat('smooth_time', 1., above=0.)
+         self.inv_smooth_time = 1. / self.smooth_time
+@@ -72,6 +78,14 @@ class Heater:
+     def set_pwm(self, read_time, value):
+         if self.target_temp <= 0. or read_time > self.verify_mainthread_time:
+             value = 0.
++        if self.soft_start_time:
++            if value <= 0.:
++                self.soft_start_begin = None
++            else:
++                if self.soft_start_begin is None:
++                    self.soft_start_begin = read_time
++                if read_time - self.soft_start_begin < self.soft_start_time:
++                    value = min(value, self.max_power * self.soft_start_power)
+         if ((read_time < self.next_pwm_time or not self.last_pwm_value)
+             and abs(value - self.last_pwm_value) < self.min_pwm_change):
+             # No significant change in value - can suppress update
+-- 
+2.54.0 (Apple Git-157)
+
