@@ -1,6 +1,6 @@
-From 056f80dc8b727d400b3bb056d287698f56522f22 Mon Sep 17 00:00:00 2001
+From dfeb95ae29df040a9d8bc87cd0175e7dd4670592 Mon Sep 17 00:00:00 2001
 From: Cedric Hauber <hauber.c@gmail.com>
-Date: Sat, 10 Oct 2026 21:02:29 +0200
+Date: Thu, 5 Nov 2026 14:25:43 +0100
 Subject: [PATCH] feat(heater): configurable spool rotation distance and speed
 
 Units whose gear turns the spool (gear_rotates_spool) always retracted 100 mm at the
@@ -15,11 +15,11 @@ also tells whether the cycle rotates the spools.
  4 files changed, 50 insertions(+), 1 deletion(-)
 
 diff --git a/config/base/mmu_parameters.cfg b/config/base/mmu_parameters.cfg
-index b4a969a9..6d4c71cf 100644
+index 6cbcc486..07cf9308 100644
 --- a/config/base/mmu_parameters.cfg
 +++ b/config/base/mmu_parameters.cfg
-@@ -525,6 +525,10 @@ heater_vent_macro           : [[PARAM_HEATER_VENT_MACRO]]		# Optional macro call
- heater_vent_interval        : [[PARAM_HEATER_VENT_INTERVAL]]			# Interval in minutes between vent openings during a drying cycle, 0=disable venting
+@@ -532,6 +532,10 @@ heater_vent_interval        : [[PARAM_HEATER_VENT_INTERVAL]]			# Interval in min
+ heater_pause_temp           : [[PARAM_HEATER_PAUSE_TEMP]]			# Drying heater while the print is paused: -1=keep drying, 0=turn off, other=lower to this temperature
  [% if MMU_HAS_ESPOOLER or MMU_GEAR_ROTATES_SPOOL %]
  heater_rotate_interval      : [[PARAM_HEATER_ROTATE_INTERVAL]]			# Interval in minutes to rotate filament (requires the filament end attached to spool)
 +[% if MMU_GEAR_ROTATES_SPOOL %]
@@ -27,13 +27,13 @@ index b4a969a9..6d4c71cf 100644
 +heater_rotate_speed         : 0			# Speed (mm/s) of that retract, 0 = default gear speed
 +[% endif %]
  [% endif %]
- 
- 
+ [% if MMU_GEAR_ROTATES_SPOOL and MULTIGEAR %]
+ heater_rotate_in_print      : [[PARAM_HEATER_ROTATE_IN_PRINT]]			# EXPERIMENTAL: 1=keep rotating with idle gears while printing (needs DRY=1 ROTATE=1, may cause short print pauses)
 diff --git a/extras/mmu/unit/mmu_environment_manager.py b/extras/mmu/unit/mmu_environment_manager.py
-index 528b81f4..6d68b004 100644
+index 47b231b2..bfeea24c 100644
 --- a/extras/mmu/unit/mmu_environment_manager.py
 +++ b/extras/mmu/unit/mmu_environment_manager.py
-@@ -434,6 +434,7 @@ class MmuEnvironmentManager:
+@@ -469,6 +469,7 @@ class MmuEnvironmentManager:
                  'humidity_target': self._drying_humidity_target,
                  'start_time': self._drying_start_time,
                  'end_time': self._drying_end_time,
@@ -41,7 +41,7 @@ index 528b81f4..6d68b004 100644
              }
          return {
              'drying_state': self._drying_state,
-@@ -1083,7 +1084,9 @@ class MmuEnvironmentManager:
+@@ -1237,7 +1238,9 @@ class MmuEnvironmentManager:
              prev_gate_selected = self.mmu.gate_selected
              for gate in gates:
                  self.mmu.select_gate(gate)
@@ -53,24 +53,24 @@ index 528b81f4..6d68b004 100644
  
  
 diff --git a/extras/mmu/unit/mmu_unit_parameters.py b/extras/mmu/unit/mmu_unit_parameters.py
-index bc933e60..cdd57db7 100644
+index 687c0be2..ca850480 100644
 --- a/extras/mmu/unit/mmu_unit_parameters.py
 +++ b/extras/mmu/unit/mmu_unit_parameters.py
-@@ -438,6 +438,8 @@ class MmuUnitParameters(TunableParametersBase):
+@@ -436,6 +436,8 @@ class MmuUnitParameters(TunableParametersBase):
          ParamSpec('heater_vent_macro',                'str',      '', section="HEATER",                             guard=_guard_has_heater),
          ParamSpec('heater_vent_interval',             'float',   0.0, section="HEATER",    limits=dict(minval=0.0), guard=_guard_has_heater, fmt="%.1f"),
          ParamSpec('heater_rotate_interval',           'float',   5.0, section="HEATER",    limits=dict(minval=1.0), guard=_guard_has_heater, fmt="%.1f"),
 +        ParamSpec('heater_rotate_distance',           'float', 100.0, section="HEATER",    limits=dict(above=0.0, maxval=500.0), guard=_guard_has_heater, fmt="%.1f"),
 +        ParamSpec('heater_rotate_speed',              'float',   0.0, section="HEATER",    limits=dict(minval=0.0), guard=_guard_has_heater, fmt="%.1f"),
+         ParamSpec('heater_rotate_in_print',           'int',       0, section="HEATER",    limits=dict(minval=0, maxval=1), guard=_guard_has_heater),
+         ParamSpec('heater_pause_temp',                'float',  -1.0, section="HEATER",    limits=dict(minval=-1.0), guard=_guard_has_heater, fmt="%.1f"),
          ParamSpec('heater_vent_duration',             'float',  10.0, section="HEATER",    limits=dict(above=0.0),  guard=_guard_has_heater, fmt="%.1f"),
-         ParamSpec('heater_vent_run_fan',              'int',       1, section="HEATER",    limits=dict(minval=0, maxval=1), guard=_guard_has_heater),
-         ParamSpec('heater_vent_open_angle',           'float',  90.0, section="HEATER",    limits=dict(minval=0.0, maxval=360.0), guard=_guard_has_heater, fmt="%.1f"),
 diff --git a/test/test_mmu_drying.py b/test/test_mmu_drying.py
-index a24cff25..1c6a97a6 100644
+index 014d751b..d9635f51 100644
 --- a/test/test_mmu_drying.py
 +++ b/test/test_mmu_drying.py
-@@ -103,5 +103,45 @@ class TestDryingVent(unittest.TestCase):
-         self.assertEqual(self.vent.calls[0], '_MMU_VENT UNIT=%s OPEN=1' % self.unit.name)
+@@ -678,5 +678,45 @@ class TestDryingDuringPausePerGate(unittest.TestCase):
+         self.assertEqual(self._targets(), [45., 0., 50., 0.])
  
  
 +class TestDryingRotation(unittest.TestCase):
