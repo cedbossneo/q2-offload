@@ -1,5 +1,20 @@
 # Risks, recovery and going back to stock
 
+## Stock firmware 01.01.02 and newer
+
+These versions move `/home/mks` to `/home/qidi`, leave a symlink, create a `qidi` account and
+delete the sudo rules of `mks`. The new account's stock password is `qiditech`. It reportedly
+has no sudo, so the installer keeps logging in as `mks`, which users report still works with its
+stock password `makerbase` and sudo, and checks the printer before a first conversion
+(`q2-printer.sh stock-check`): it stops with the reason and nothing flashed if `hid-flash`, an
+MCU or root access is missing. To use another account, set `PRINTER_USER` in
+`~/.config/q2-offload/settings.env`.
+
+No conversion from these versions has been tested yet, and a printer that left the factory on
+one may not have `hid-flash`. If the check stops or the conversion fails, please open an issue
+with its output. Installing the stock 1.1.1 package first is not required by anything we know
+of, and we do not provide a way to do it.
+
 ## What can go wrong when flashing
 
 | Step | Protection | If it fails |

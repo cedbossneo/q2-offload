@@ -37,7 +37,8 @@ slot.
 ## What you need
 
 - A Qidi Q2 with a Qidi Box (one unit), on the stock Qidi OS, reachable over SSH
-  (`mks` / `makerbase`).
+  (`mks` / `makerbase`). Converting from stock firmware 01.01.02 or newer is
+  [not tested yet](docs/recovery.md#stock-firmware-010102-and-newer).
 - A Klipper host running **Debian 12 or Ubuntu 22.04+** (x86_64 or arm64), on a wired
   link to the printer if possible. Any recent mini PC is plenty; failure detection uses
   about a second of one CPU core every 10 s while printing, and 2 GB of disk.
