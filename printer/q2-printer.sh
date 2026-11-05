@@ -323,7 +323,7 @@ cmd_stock_check() {
 }
 
 cmd_deploy_katapult() {
-    local m="${1:?main|thr|box}" bin="${2:?deployer.bin}" app boot i
+    local m="${1:?main|thr|box}" bin="${2:?deployer.bin}" app boot
     [ -s "$bin" ] || die "missing deployer $bin"
     if has_katapult "$m"; then
         info "${m}: Katapult already installed, skipping the deployer"
@@ -339,7 +339,7 @@ cmd_deploy_katapult() {
         sleep 2
     else
         "$(python_bin)" "${WORK}/q2_stock_reset.py" "$app"
-        for i in 1 2 3 4 5 6 7 8 9 10; do
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
             boot="$(stock_boot_device "$m")"
             [ -n "$boot" ] && break
             sleep 1

@@ -39,8 +39,8 @@ if su mks -c "sudo -n /bin/true" 2>/dev/null; then echo "FAIL: rule is too broad
 echo "== scenario 4: stock firmware 01.01.02+ layout, /home/mks is a symlink to /home/qidi"
 useradd -m qidi; cp -a /home/mks/. /home/qidi/; rm -rf /home/mks; ln -s /home/qidi /home/mks
 chown -R qidi: /home/qidi
-SUDO_USER=mks bash /home/qidi/q2-offload/q2-printer.sh stock-check | grep -q "home: /home/qidi" \
-    || { echo "FAIL: the symlink was not resolved"; exit 1; }
+out="$(SUDO_USER=mks bash /home/qidi/q2-offload/q2-printer.sh stock-check)"; echo "$out"
+[ "$(echo "$out" | grep -c "home: /home/qidi")" = 1 ] || { echo "FAIL: the symlink was not resolved"; exit 1; }
 [ "$(stat -c %U /home/qidi/q2-offload)" = mks ] || { echo "FAIL: work directory not left to the login"; exit 1; }
 echo "== flashtool calls"; cat /tmp/flashtool.log
 echo "flash simulation OK"
