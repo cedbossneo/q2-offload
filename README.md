@@ -38,6 +38,9 @@ slot.
 
 - A Qidi Q2 with a Qidi Box (one unit), on the stock Qidi OS, reachable over SSH
   (`mks` / `makerbase`).
+  No Box? Install with `./install.sh --no-box`: only the mainboard and toolhead are flashed,
+  Happy Hare is skipped, and the toolhead sensor pauses the print on a filament runout
+  (`./install.sh --box` switches back). The installer checks for a Box before flashing.
 - A Klipper host running **Debian 12 or Ubuntu 22.04+** (x86_64 or arm64), on a wired
   link to the printer if possible. Any recent mini PC is plenty; failure detection uses
   about a second of one CPU core every 10 s while printing, and 2 GB of disk.
