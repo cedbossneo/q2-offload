@@ -1,0 +1,12 @@
+[Unit]
+Description=Bring Klipper back after the printer link was lost (q2-offload)
+After=network-online.target moonraker.service
+
+[Install]
+WantedBy=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 @Q2_ROOT@/host/q2-link-watch.py --printer @PRINTER_IP@ --printer-user @PRINTER_USER@ --user @USER@ --work /home/@PRINTER_USER@/q2-offload --log @HOME@/printer_data/logs/q2-link-watch.log
+Restart=always
+RestartSec=10

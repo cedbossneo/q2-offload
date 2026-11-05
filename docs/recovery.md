@@ -36,6 +36,18 @@ again. Only the first step, which replaces Qidi's bootloader, needs care.
 
 ## Klipper does not connect
 
+Klipper does not reconnect by itself, so `q2-link-watch` does it. It reads Klipper's state every
+15 s and, once the printer answers on the network, acts on a connection error or on a Klipper
+still starting after 150 s: first it restarts the bridges and Klipper, a minute later it also
+restarts the printer's proxies, then it tries again every 10 minutes. This covers the printer
+being switched on after the host, the host rebooting and a link that stopped working. It never
+touches a heater or other fault, which needs you to read it, and it stays out of the way of
+updates and flashes. If the link is lost during a print, that print has already stopped: the
+restart does not resume it, use the power-loss recovery.
+
+What it did and what it saw before each restart (connections, printer devices, kernel messages)
+is in `~/printer_data/logs/q2-link-watch.log`. If it does not get Klipper back:
+
 - `./install.sh status` shows the services on both sides.
 - Host: `journalctl -u 'q2-serial-bridge@*'` (the bridges reconnect every second),
   `~/printer_data/logs/klippy.log`.
