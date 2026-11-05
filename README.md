@@ -205,6 +205,9 @@ slicer presets are yours:
   the host lightly loaded (Klipper and the bridges run at nice -10, failure detection at
   nice 10 with Obico's ML API capped at one CPU with the lowest weight), and do not put
   the host on Wi-Fi.
+- **Reconnecting.** After the printer or the host was switched off, or the link dropped,
+  `q2-link-watch` brings Klipper back without a FIRMWARE_RESTART
+  ([details](docs/recovery.md#klipper-does-not-connect)).
 - **Box LEDs are static** like stock: animations send many small commands and made the
   Box MCU shut down over the network.
 - `[mcu]` serial devices are ptys in `~/printer_data/comms/q2-{main,thr,mmu}`.

@@ -104,6 +104,7 @@ render() {
         -e "s#@HOST_IP@#${HOST_IP}#g" \
         -e "s#@Q2_ROOT@#${Q2_ROOT}#g" \
         -e "s#@ORCA_PROFILES_REF@#${ORCA_PROFILES_REF}#g" \
+        -e "s#@PRINTER_USER@#${PRINTER_USER:-mks}#g" \
         -e "s#@Q2_ORIGIN@#${Q2_ORIGIN}#g" \
         -e "s#@FLUIDD_PORT@#${FLUIDD_PORT}#g" \
         -e "s#@MAINSAIL_PORT@#${MAINSAIL_PORT}#g" \
@@ -612,7 +613,7 @@ host_services() {
     sudo install -m 644 "$tmp" /etc/systemd/system/q2-serial-bridge@.service
     render "${Q2_ROOT}/host/systemd/q2-offload.service" > "$tmp"
     sudo install -m 644 "$tmp" /etc/systemd/system/q2-offload.service
-    for unit in q2-spool-presets.service q2-spool-presets.timer; do
+    for unit in q2-link-watch.service q2-spool-presets.service q2-spool-presets.timer; do
         render "${Q2_ROOT}/host/systemd/${unit}" > "$tmp"
         sudo install -m 644 "$tmp" "/etc/systemd/system/${unit}"
     done
@@ -628,6 +629,8 @@ host_services() {
     # shellcheck disable=SC2046  # one word per unit
     sudo systemctl enable -q klipper $(bridge_units)
     has_box || sudo systemctl disable -q --now q2-serial-bridge@mmu:7003 2>/dev/null || true
+    # Started with Klipper (host_start): during a first install the printer is still on stock
+    sudo systemctl enable -q q2-link-watch
     if has spoolman; then
         sudo systemctl enable -q --now q2-spool-presets.timer
     else
@@ -644,6 +647,7 @@ host_start() {
     sleep 2
     sudo systemctl restart klipper moonraker
     has detect && sudo systemctl restart q2-detect
+    sudo systemctl restart q2-link-watch
     return 0
 }
 

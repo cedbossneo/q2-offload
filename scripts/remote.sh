@@ -161,6 +161,7 @@ EOF
     # Never skipped, not even with --yes
     confirm_phrase "FLASH"
     if [ -n "$(systemctl list-unit-files klipper.service --no-legend 2>/dev/null)" ]; then
+        sudo systemctl stop q2-link-watch 2>/dev/null || true  # it must not restart the link during a flash; host_start starts it again
         sudo systemctl stop klipper q2-serial-bridge@main:7001 q2-serial-bridge@thr:7002 q2-serial-bridge@mmu:7003 2>/dev/null || true  # all three: a Box bridge may be left over
     fi
     # shellcheck disable=SC2086  # $deploy is empty or one word

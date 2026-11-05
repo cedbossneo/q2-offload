@@ -42,6 +42,7 @@ verify_install() {
     VERIFY_FAILED=0
     check "serial bridges to the printer" bridges_active
     check "printer serial proxies" printer_proxies_active
+    check "link watchdog (q2-link-watch)" systemctl is-active --quiet q2-link-watch
     check "Klipper ready (mainboard, toolhead$(has_box && echo ' and Box') connected)" klipper_ready
     check "Moonraker connected to Klipper" moonraker_sees_klipper
     check "Moonraker components loaded" moonraker_no_failed_components

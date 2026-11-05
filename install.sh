@@ -342,6 +342,7 @@ do_update_unattended() {
     if has detect; then host_obico_ml_api; else host_drop_obico_ml_api; fi
     host_services
     systemctl restart klipper
+    systemctl restart q2-link-watch
     has detect && systemctl restart q2-detect
     if [ -e "${STATE_DIR}/moonraker-changed" ]; then
         rm -f "${STATE_DIR}/moonraker-changed"
