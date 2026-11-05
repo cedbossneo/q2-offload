@@ -11,7 +11,7 @@
 #   q2-printer.sh stock-check                      (can a first conversion run? flashes nothing)
 #   q2-printer.sh deploy-katapult <main|thr|box> <deployer.bin>
 #   q2-printer.sh flash <main|thr|box> <firmware-dir>
-#   q2-printer.sh convert <firmware-id> [deploy]   (deploy Katapult if needed, flash all three)
+#   q2-printer.sh convert <firmware-id> [deploy]   (deploy Katapult if needed, flash all MCUs)
 #   q2-printer.sh setup <klipper-host-ip>          (proxy-install + stock-stop + proxies-start + sudoers)
 #   q2-printer.sh sudoers                          (passwordless sudo for this script only)
 #   q2-printer.sh status
@@ -30,6 +30,13 @@ FLASHTOOL="${WORK}/flashtool.py"
 STOCK_SERVICES="klipper klipper-mcu moonraker makerbase-client qidi-client qidi-tuning algo_app"
 THR_DEVICE=/dev/ttyS4
 THR_BAUD=500000
+# Printer without a Qidi Box: install.sh creates this marker (--no-box). Only the mainboard
+# and the toolhead are flashed and proxied.
+if [ -e "${WORK}/no-box" ]; then
+    MCUS="main thr"; PROXIES="main thr"
+else
+    MCUS="main thr box"; PROXIES="main thr mmu"
+fi
 
 # Katapult application offsets: the firmware must be linked for exactly these.
 declare -A OFFSET=([main]=0x8008000 [thr]=0x8002000 [box]=0x8004000)
@@ -133,13 +140,18 @@ cmd_detect() {
 cmd_proxy_install() {
     local host="${1:?klipper host ip}" main box
     command -v socat >/dev/null || { info "installing socat"; apt_install socat; }
-    main="$(klipper_device main)"; box="$(klipper_device box)"
+    main="$(klipper_device main)"
     [ -n "$main" ] || die "mainboard not found as usb-Klipper_${MCU_TYPE[main]} (flash it first)"
-    [ -n "$box" ] || die "Qidi Box not found as usb-Klipper_${MCU_TYPE[box]} (flash it first)"
     mkdir -p /etc/q2-serial-proxy
     printf 'DEVICE=%s\nPORT=%s\nALLOW=%s/32\nSERIAL_OPTS=\n' "$main" "${PORT[main]}" "$host" > /etc/q2-serial-proxy/main.env
     printf 'DEVICE=%s\nPORT=%s\nALLOW=%s/32\nSERIAL_OPTS=,b%s\n' "$THR_DEVICE" "${PORT[thr]}" "$host" "$THR_BAUD" > /etc/q2-serial-proxy/thr.env
-    printf 'DEVICE=%s\nPORT=%s\nALLOW=%s/32\nSERIAL_OPTS=\n' "$box" "${PORT[mmu]}" "$host" > /etc/q2-serial-proxy/mmu.env
+    if [[ " $PROXIES " == *" mmu "* ]]; then
+        box="$(klipper_device box)"
+        [ -n "$box" ] || die "Qidi Box not found as usb-Klipper_${MCU_TYPE[box]} (flash it first, or install with --no-box)"
+        printf 'DEVICE=%s\nPORT=%s\nALLOW=%s/32\nSERIAL_OPTS=\n' "$box" "${PORT[mmu]}" "$host" > /etc/q2-serial-proxy/mmu.env
+    else
+        rm -f /etc/q2-serial-proxy/mmu.env
+    fi
     install -m 644 "${WORK}/q2-serial-proxy@.service" /etc/systemd/system/
     systemctl daemon-reload
     info "proxies configured for host ${host}"
@@ -163,10 +175,14 @@ cmd_stock_start() {
 }
 
 cmd_proxies_start() {
-    systemctl enable q2-serial-proxy@main q2-serial-proxy@thr q2-serial-proxy@mmu
+    local units=() p
+    for p in $PROXIES; do units+=("q2-serial-proxy@${p}"); done
+    # No Box: a proxy left from a Box install would only fail in a loop
+    [[ " $PROXIES " == *" mmu "* ]] || systemctl disable --now q2-serial-proxy@mmu >/dev/null 2>&1 || true
+    systemctl enable "${units[@]}"
     # restart, not --now: a running proxy would keep an old ALLOW range
-    systemctl restart q2-serial-proxy@main q2-serial-proxy@thr q2-serial-proxy@mmu
-    info "proxies running"
+    systemctl restart "${units[@]}"
+    info "proxies running (${PROXIES})"
 }
 
 cmd_proxies_stop() {
@@ -307,7 +323,7 @@ cmd_stock_check() {
     fi
     command -v python3 >/dev/null || [ -x "${USER_HOME}/klippy-env/bin/python" ] \
         || { echo "MISSING: Python"; missing=1; }
-    for m in main thr box; do
+    for m in $MCUS; do
         if [ -e "$(katapult_marker "$m")" ]; then info "${m}: already on Katapult"; continue; fi
         dev="$(stock_app_device "$m")"
         if [ "$m" != thr ] && [ -n "$(katapult_device "$m")" ]; then info "${m}: already on Katapult"; continue; fi
@@ -357,18 +373,18 @@ cmd_deploy_katapult() {
 cmd_convert() {
     local id="${1:?firmware id}" deploy="${2:-}" m file
     if [ "$deploy" = deploy ]; then
-        for m in main thr box; do
+        for m in $MCUS; do
             file=mcu; [ "$m" = thr ] && file=thr; [ "$m" = box ] && file=mmu
             info "Katapult -> ${m}"
             cmd_deploy_katapult "$m" "${WORK}/deployer/${file}-deployer.bin"
         done
     fi
-    for m in main thr box; do
+    for m in $MCUS; do
         cmd_flash "$m" "${WORK}/firmware"
     done
     echo "$id" > "${WORK}/firmware-id"
     chown "$(work_owner)": "${WORK}/firmware-id"
-    info "all MCUs on firmware ${id}"
+    info "MCUs (${MCUS}) on firmware ${id}"
 }
 
 # Let the printer user run this script (and only this one) as root without a password, so

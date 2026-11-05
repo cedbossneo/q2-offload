@@ -47,6 +47,10 @@ Good to know:
   send them to the printer. The adaptive mesh always runs, and timelapse follows Moonraker's
   settings.
 
+**Without a Box** (`--no-box`), set the printer agent to `moonraker`: there are no slots to sync
+or choose, and slice with one filament (T1 to T3 stop the print). The Q2 Box tab and filament
+sync have nothing to show.
+
 ## Spool presets
 
 Orca matches a slot to a preset by `filament_id`, and a preset with a parent takes the id of

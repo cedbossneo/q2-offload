@@ -13,6 +13,42 @@ NGINX_SITE=/etc/nginx/sites-available/q2-offload
 
 has() { [[ ",${COMPONENTS}," == *",$1,"* ]]; }
 
+# Qidi Box present (default). --no-box saves BOX=0 in settings.env: no Box MCU, no Happy Hare.
+has_box() { [ "${BOX:-1}" != 0 ]; }
+
+# Serial bridges to the printer, one per MCU
+bridge_units() {
+    echo q2-serial-bridge@main:7001 q2-serial-bridge@thr:7002
+    has_box && echo q2-serial-bridge@mmu:7003
+    return 0
+}
+
+# Box includes of printer.cfg, active with a Box, commented out (and q2_nobox.cfg included)
+# without one. Edits the file in place; idempotent. Returns 0 if the file changed.
+printer_cfg_box_mode() {
+    python3 - "$1" "$(has_box && echo 1 || echo 0)" <<'PY'
+import re, sys
+path, box = sys.argv[1], sys.argv[2] == '1'
+s = open(path).read()
+box_inc = r'\[include (?:mmu/[^\]]*|q2_box\.cfg|mmu_keep_dry\.cfg)\]'
+nobox = '[include q2_nobox.cfg]'
+if box:
+    new = re.sub(r'^#no-box# (' + box_inc + ')', r'\1', s, flags=re.M)
+    new = re.sub(r'^' + re.escape(nobox) + r'\n', '', new, flags=re.M)
+else:
+    new = re.sub(r'^(' + box_inc + ')', r'#no-box# \1', s, flags=re.M)
+    if not re.search(r'^' + re.escape(nobox), new, re.M):
+        anchor = re.search(r'^\[include q2_mainline_helpers\.cfg\]\n', new, re.M)
+        if anchor is None:
+            anchor = re.search(r'^\[include [^\]]*\]\n(?![\s\S]*^\[include )', new, re.M)
+        pos = anchor.end() if anchor else 0
+        new = new[:pos] + nobox + '\n' + new[pos:]
+if new == s:
+    sys.exit(1)
+open(path, 'w').write(new)
+PY
+}
+
 # Port of the nginx server that also serves the Box page, autopa and the Moonraker API:
 # 80, unless the only web client installed is the one on the other port (see host_nginx)
 web_port() {
@@ -216,10 +252,21 @@ moonraker_sysdeps() {
 # q2-offload entry triggers q2-offload.service, which runs "install.sh update".
 moonraker_conf_migrate() {
     python3 - "${CFG}/moonraker.conf" "${DATA}/comms/klippy.sock" "$(moonraker_channel)" \
-        "${STATE_DIR}/moonraker-changed" <<'EOF'
+        "${STATE_DIR}/moonraker-changed" "${PRINTER_IP}" <<'EOF'
 import os, re, sys
-path, klippy_sock, channel, changed_flag = sys.argv[1:5]
+path, klippy_sock, channel, changed_flag, printer_ip = sys.argv[1:6]
 s = open(path).read()
+# Camera through the host's nginx (/webcam/) instead of the printer's address, which browsers
+# elsewhere may not reach. Only the URLs the installer wrote (this printer's IP) are changed.
+m = re.search(r'^\[webcam q2\]\n((?:[^\[\n].*\n|\n)*)', s, re.M)
+if m and printer_ip:
+    body = re.sub(r'^((?:stream|snapshot)_url\s*:\s*)http://' + re.escape(printer_ip) + r'(/webcam/)',
+                  r'\1\2', m.group(1), flags=re.M)
+    if body != m.group(1):
+        s = s[:m.start(1)] + body + s[m.end(1):]
+        open(path, 'w').write(s)
+        os.makedirs(os.path.dirname(changed_flag), exist_ok=True)
+        open(changed_flag, 'w').close()
 # Without it Moonraker waits on /tmp/klippy_uds and never sees Klipper (configs from older installs)
 srv = re.search(r'^\[server\]\n', s, re.M)
 if srv and not re.search(r'^klippy_uds_address\s*:', s, re.M):
@@ -271,6 +318,13 @@ EOF
 }
 
 host_happy_hare() {
+    if ! has_box; then
+        # Moonraker would fail on Happy Hare's component without Happy Hare's Klipper config
+        [ -f "${CFG}/moonraker.conf" ] && grep -q '^\[mmu_server\]' "${CFG}/moonraker.conf" \
+            && drop_section "${CFG}/moonraker.conf" mmu_server && mkdir -p "$STATE_DIR" && touch "${STATE_DIR}/moonraker-changed"
+        info "No Qidi Box: Happy Hare not used"
+        return 0
+    fi
     local hh="${HOME}/Happy-Hare"
     checkout_ref "$HAPPY_HARE_REPO" "$HAPPY_HARE_REF" "$hh"
     apply_patches "$hh" "${Q2_ROOT}/patches/happy-hare" q2-offload
@@ -294,6 +348,7 @@ host_config() {
     tmp="$(mktemp)"
     for f in "${Q2_ROOT}"/config/klipper/*.cfg; do
         render "$f" | toggle > "$tmp"
+        [ "$(basename "$f")" = printer.cfg ] && { printer_cfg_box_mode "$tmp" || true; }
         if [ "$(basename "$f")" = printer.cfg ]; then
             # printer.cfg carries the SAVE_CONFIG calibrations: only written on first install
             [ -e "${CFG}/printer.cfg" ] && [ -z "$(awk -v f="${CFG}/printer.cfg" '$2 == f' "$MANIFEST" 2>/dev/null)" ] \
@@ -301,6 +356,11 @@ host_config() {
         fi
         install_config "$tmp" "${CFG}/$(basename "$f")"
     done
+    # A printer.cfg kept as is (edited, or there before q2-offload) still gets the Box
+    # includes switched to match --box / --no-box
+    if [ -e "${CFG}/printer.cfg" ] && printer_cfg_box_mode "${CFG}/printer.cfg"; then
+        warn "printer.cfg: Box includes switched $(has_box && echo on || echo off) in your existing file"
+    fi
     for f in "${Q2_ROOT}"/config/plr/*.sh "${Q2_ROOT}"/config/plr/*.py; do
         render "$f" > "$tmp"
         install_config "$tmp" "${DATA}/scripts/plr/$(basename "$f")"
@@ -314,7 +374,7 @@ host_config() {
         > "${CFG}/saved_variables.cfg"
     if has mainsail; then
         mkdir -p "${CFG}/.theme"
-        python3 "${Q2_ROOT}/scripts/navi.py" "$COMPONENTS" "$HOST_IP" "$(web_port)" > "$tmp"
+        python3 "${Q2_ROOT}/scripts/navi.py" "$COMPONENTS" "$HOST_IP" "$(web_port)" "$(has_box && echo box || echo nobox)" > "$tmp"
         install_config "$tmp" "${CFG}/.theme/navi.json"
     fi
     rm -f "$tmp"
@@ -356,11 +416,12 @@ host_pages() {
     for page in assets box detect; do
         rm -rf "${DATA}/web/${page}.new"
         [ "$page" != detect ] || has detect || { rm -rf "${DATA}/web/detect"; continue; }
+        [ "$page" != box ] || has_box || { rm -rf "${DATA}/web/box"; continue; }
         mkdir -p "${DATA}/web"
         cp -r "${Q2_ROOT}/web/${page}" "${DATA}/web/${page}.new"
         rm -rf "${DATA:?}/web/${page}" && mv "${DATA}/web/${page}.new" "${DATA}/web/${page}"
     done
-    ok "pages /box/$(has detect && echo ' and /detect/')"
+    ok "pages$(has_box && echo ' /box/')$(has detect && echo ' /detect/')"
 }
 
 host_web() {
@@ -564,19 +625,22 @@ host_services() {
     fi
     rm -f "$tmp"
     sudo systemctl daemon-reload
-    sudo systemctl enable -q klipper q2-serial-bridge@main:7001 q2-serial-bridge@thr:7002 q2-serial-bridge@mmu:7003
+    # shellcheck disable=SC2046  # one word per unit
+    sudo systemctl enable -q klipper $(bridge_units)
+    has_box || sudo systemctl disable -q --now q2-serial-bridge@mmu:7003 2>/dev/null || true
     if has spoolman; then
         sudo systemctl enable -q --now q2-spool-presets.timer
     else
         sudo systemctl disable -q --now q2-spool-presets.timer || true
     fi
     has detect && sudo systemctl enable -q q2-detect
-    ok "systemd units (klipper, q2-serial-bridge@main/thr/mmu)"
+    ok "systemd units (klipper, q2-serial-bridge@main/thr$(has_box && echo /mmu))"
 }
 
 host_start() {
     info "Starting the serial bridges, Klipper and Moonraker on this host"
-    sudo systemctl restart q2-serial-bridge@main:7001 q2-serial-bridge@thr:7002 q2-serial-bridge@mmu:7003
+    # shellcheck disable=SC2046  # one word per unit
+    sudo systemctl restart $(bridge_units)
     sleep 2
     sudo systemctl restart klipper moonraker
     has detect && sudo systemctl restart q2-detect

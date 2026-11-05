@@ -39,6 +39,9 @@ slot.
 - A Qidi Q2 with a Qidi Box (one unit), on the stock Qidi OS, reachable over SSH
   (`mks` / `makerbase`). Converting from stock firmware 01.01.02 or newer is
   [not tested yet](docs/recovery.md#stock-firmware-010102-and-newer).
+  No Box? Install with `./install.sh --no-box`: only the mainboard and toolhead are flashed,
+  Happy Hare is skipped, and the toolhead sensor pauses the print on a filament runout
+  (`./install.sh --box` switches back). The installer checks for a Box before flashing.
 - A Klipper host running **Debian 12 or Ubuntu 22.04+** (x86_64 or arm64), on a wired
   link to the printer if possible. Any recent mini PC is plenty; failure detection uses
   about a second of one CPU core every 10 s while printing, and 2 GB of disk.
@@ -90,6 +93,11 @@ Spoolman spool) are in `slicer/orca/`, see [docs/orca-slicer.md](docs/orca-slice
 Installs made before Mainsail moved to port 80 keep Fluidd on 80 and Mainsail on 81. To
 switch, set `MAINSAIL_PORT=80` and `FLUIDD_PORT=81` in `~/.config/q2-offload/settings.env`,
 then run `./install.sh host`.
+
+The camera is relayed by the host's nginx at `/webcam/`, and Moonraker now lists it with
+relative URLs, so browsers reach it from any address of the host. A client that adds Moonraker's
+port to them gets a 404. In Home Assistant's Moonraker integration, set the camera URLs in its
+options: `http://<host>/webcam/?action=stream` and `http://<host>/webcam/?action=snapshot`.
 
 ## Updates
 
