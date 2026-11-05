@@ -375,13 +375,16 @@ cmd_convert() {
 # the host can drive it non-interactively. mks already has full sudo with the well-known
 # stock password, so this grants nothing new.
 cmd_sudoers() {
-    local u tmp
+    local u tmp dir
     u="$(work_owner)"
     tmp="$(mktemp)"
-    printf '# q2-offload: host-driven printer maintenance
-%s ALL=(root) NOPASSWD: /bin/bash %s/q2-printer.sh *, /usr/bin/bash %s/q2-printer.sh *
-' \
-        "$u" "$WORK" "$WORK" > "$tmp"
+    # sudo compares the path as typed: the installer calls it through /home/mks, a symlink on 01.01.02+
+    {
+        echo '# q2-offload: host-driven printer maintenance'
+        for dir in "$WORK" /home/mks/q2-offload; do
+            printf '%s ALL=(root) NOPASSWD: /bin/bash %s/q2-printer.sh *, /usr/bin/bash %s/q2-printer.sh *\n' "$u" "$dir" "$dir"
+        done
+    } | awk '!seen[$0]++' > "$tmp"
     visudo -cqf "$tmp" || die "invalid sudoers rule"
     install -m 440 "$tmp" /etc/sudoers.d/q2-offload
     rm -f "$tmp"

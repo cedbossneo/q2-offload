@@ -42,5 +42,8 @@ chown -R qidi: /home/qidi
 out="$(SUDO_USER=mks bash /home/qidi/q2-offload/q2-printer.sh stock-check)"; echo "$out"
 [ "$(echo "$out" | grep -c "home: /home/qidi")" = 1 ] || { echo "FAIL: the symlink was not resolved"; exit 1; }
 [ "$(stat -c %U /home/qidi/q2-offload)" = mks ] || { echo "FAIL: work directory not left to the login"; exit 1; }
+SUDO_USER=mks bash /home/qidi/q2-offload/q2-printer.sh sudoers
+su mks -c "sudo -n /bin/bash /home/mks/q2-offload/q2-printer.sh detect" >/dev/null \
+    || { echo "FAIL: passwordless rule does not match through the symlink"; exit 1; }
 echo "== flashtool calls"; cat /tmp/flashtool.log
 echo "flash simulation OK"

@@ -3,9 +3,11 @@
 ## Stock firmware 01.01.02 and newer
 
 These versions move `/home/mks` to `/home/qidi`, leave a symlink, create a `qidi` account and
-remove the sudo rights of `mks`. The installer detects this, logs in as `qidi`, and checks the
-printer before a first conversion (`q2-printer.sh stock-check`): it stops with the reason and
-nothing flashed if `hid-flash`, an MCU or root access is missing.
+delete the sudo rules of `mks`. The installer keeps logging in as `mks`, which community guides
+report still works with its stock password, and checks the printer before a first conversion
+(`q2-printer.sh stock-check`): it stops with the reason and nothing flashed if `hid-flash`, an
+MCU or root access is missing. To use another account, set `PRINTER_USER` in
+`~/.config/q2-offload/settings.env`.
 
 No conversion from these versions has been tested yet, and a printer that left the factory on
 one may not have `hid-flash`. If the check stops or the conversion fails, please open an issue
