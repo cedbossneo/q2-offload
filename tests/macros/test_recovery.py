@@ -43,9 +43,13 @@ def test_reload_only_after_a_clean_unload():
 
 
 def test_resume_only_when_loaded():
-    assert render("_BOX_RESUME_IF_LOADED", {"filament_pos": LOADED}) == ["RESUME"]
+    assert render("_BOX_RESUME_IF_LOADED", {"filament_pos": LOADED, "print_state": "paused"}) == ["RESUME"]
     for position in (UNLOADED, IN_BOWDEN):
-        assert "RESUME" not in render("_BOX_RESUME_IF_LOADED", {"filament_pos": position})
+        assert "RESUME" not in render("_BOX_RESUME_IF_LOADED", {"filament_pos": position, "print_state": "paused"})
+
+
+def test_no_resume_after_a_failed_step_locked_the_mmu():
+    assert "RESUME" not in render("_BOX_RESUME_IF_LOADED", {"filament_pos": LOADED, "print_state": "pause_locked"})
 
 
 if __name__ == "__main__":

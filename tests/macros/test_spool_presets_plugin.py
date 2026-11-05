@@ -33,6 +33,13 @@ def test_presets_are_installed_then_stale_ones_removed():
         assert (target / "bundle_metadata.json").exists()
 
 
+def test_a_name_from_the_host_stays_in_the_bundle():
+    with tempfile.TemporaryDirectory() as tmp:
+        target = pathlib.Path(tmp) / "bundle"
+        plugin.sync_files(target, {"hash": "a", "files": {"../../evil.json": "{}"}})
+        assert (target / "filament" / "evil.json").exists() and not (pathlib.Path(tmp) / "evil.json").exists()
+
+
 def test_same_hash_changes_nothing():
     with tempfile.TemporaryDirectory() as tmp:
         target = pathlib.Path(tmp)

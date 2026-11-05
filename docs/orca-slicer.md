@@ -31,7 +31,8 @@ gates in the layout of the stock Box firmware (`host/extras/qidi_box_compat.py`)
 
 - **Sync filaments** reads the colours and materials of the four slots;
 - the print dialog lets you pick a slot per filament: `PRINT_START` turns the choice into a
-  Happy Hare tool map (`MMU_TTG_MAP`), for that print only.
+  Happy Hare tool map (`MMU_TTG_MAP`). It stays for a power-loss resume, and goes back to
+  one-to-one at the next print that did not choose slots.
 
 Good to know:
 

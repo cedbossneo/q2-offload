@@ -69,10 +69,12 @@ def sync_files(target, index):
         return False
     folder = target / "filament"
     folder.mkdir(parents=True, exist_ok=True)
-    for name, content in index["files"].items():
+    # Only a plain file name from the host: never a path out of the bundle
+    files = {pathlib.PurePath(name).name: content for name, content in index["files"].items()}
+    for name, content in files.items():
         (folder / name).write_text(content, encoding="utf-8")
     for old in folder.glob("*.json"):
-        if old.name not in index["files"]:
+        if old.name not in files:
             old.unlink()
     (target / "bundle_metadata.json").write_text(
         json.dumps({"id": BUNDLE_ID, "name": "Q2 Spool Presets", "version": "0.1.0"}))

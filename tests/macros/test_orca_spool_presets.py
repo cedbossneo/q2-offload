@@ -55,6 +55,19 @@ def test_base_of_variants():
     assert spools.base_name({"material": "PETG", "extra": {"orca_base_preset": '"SUNLU PETG @System"'}}) == "SUNLU PETG @System"
 
 
+def test_base_preset_cannot_be_a_path():
+    for bad in ("../../etc/secret", "a/b", "a\\\\b"):
+        try:
+            spools.base_name({"material": "PLA", "extra": {"orca_base_preset": '"%s"' % bad}})
+        except KeyError:
+            continue
+        raise AssertionError(bad)
+
+
+def test_file_names_are_safe_everywhere():
+    assert spools.file_name({"name": 'a/b:c?"d'}) == "a-b-c--d.json"
+
+
 def test_tuned_values_in_spoolman_win():
     filament = {**SPOOL["filament"], "extra": {"orca_pressure_advance": "0.0418", "orca_nozzle_temperature": "210",
                                                "orca_overhang_fan_threshold": '"50%"', "orca_base_preset": '"X"'}}

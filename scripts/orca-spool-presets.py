@@ -16,6 +16,7 @@ import argparse
 import hashlib
 import json
 import pathlib
+import re
 import sys
 import urllib.error
 import urllib.parse
@@ -41,8 +42,11 @@ def flatten(name, load):
 
 
 def base_name(filament):
-    """The preset named in Spoolman (orca_base_preset), else the Generic one of the material."""
+    """The preset named in Spoolman (orca_base_preset), else the Generic one of the material.
+    Spoolman has no login and the name becomes a path, so it is only a plain file name."""
     chosen = extra_value(filament, "orca_base_preset")
+    if chosen and (not isinstance(chosen, str) or "/" in chosen or "\\" in chosen or ".." in chosen):
+        raise KeyError("invalid orca_base_preset: %r" % (chosen,))
     return chosen or "Generic %s @System" % BASE_BY_MATERIAL.get(filament["material"], filament["material"])
 
 
@@ -151,13 +155,14 @@ def profile_loader(ref, cache_dir):
             raise KeyError("profile not found: %s" % name)
         if cached:
             cached.parent.mkdir(parents=True, exist_ok=True)
-            cached.write_text(json.dumps(memory[name]))
+            write_if_changed(cached, json.dumps(memory[name]))
         return memory[name]
     return load
 
 
 def file_name(preset):
-    return preset["name"].replace("/", "-") + ".json"
+    """Spoolman names become files on the slicer's machine, possibly Windows."""
+    return re.sub(r'[<>:"/\\|?*\x00-\x1f]', "-", preset["name"]).strip(". ") + ".json"
 
 
 def serialize(preset):
@@ -263,7 +268,7 @@ def main():
             continue
         try:
             presets.append(build_preset(spool, flatten(base_name(spool["filament"]), load)))
-        except (KeyError, urllib.error.URLError) as error:
+        except (KeyError, OSError, ValueError) as error:
             print("spool #%d skipped: %s" % (spool["id"], error), file=sys.stderr)
             failed += 1
     # A Spoolman or network failure must not empty the slicer's list
@@ -271,7 +276,8 @@ def main():
         box, gates = read_printer(args.moonraker, spools)
         publish(presets, args.out, box, gates, args.public_spoolman_port)
     print("%d preset(s), %d failed" % (len(presets), failed))
-    return 1 if failed else 0
+    # One odd spool must not mark the service as failed every minute
+    return 1 if failed and not presets else 0
 
 
 if __name__ == "__main__":

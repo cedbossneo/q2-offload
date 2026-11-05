@@ -151,7 +151,8 @@ The printer board gets a sudo rule that lets its `mks` user run `q2-offload/q2-p
 **Updating an existing install.** These need a manual step, because `printer.cfg` and your
 slicer presets are yours:
 
-- **Board fan:** to keep the fan on after the motors stop in a hot chamber, add to
+- **Board fan:** once the update has moved Klipper to this version (`temperature_limits`
+  comes from its patch 0009, and an older Klipper refuses the option), add to
   `[controller_fan board_fan]` in `printer.cfg`, then restart Klipper:
 
   ```ini
