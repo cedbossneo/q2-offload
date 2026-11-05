@@ -93,6 +93,11 @@ Installs made before Mainsail moved to port 80 keep Fluidd on 80 and Mainsail on
 switch, set `MAINSAIL_PORT=80` and `FLUIDD_PORT=81` in `~/.config/q2-offload/settings.env`,
 then run `./install.sh host`.
 
+The camera is relayed by the host's nginx at `/webcam/`, and Moonraker now lists it with
+relative URLs, so browsers reach it from any address of the host. A client that adds Moonraker's
+port to them gets a 404. In Home Assistant's Moonraker integration, set the camera URLs in its
+options: `http://<host>/webcam/?action=stream` and `http://<host>/webcam/?action=snapshot`.
+
 ## Updates
 
 Upstream projects are tracked automatically: every day CI moves Klipper, Happy Hare,
