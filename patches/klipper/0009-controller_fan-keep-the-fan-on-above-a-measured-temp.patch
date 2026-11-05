@@ -1,0 +1,65 @@
+From e645e560a733851c47347a5d6f350902d6407c40 Mon Sep 17 00:00:00 2001
+From: Cedric Hauber <hauber.c@gmail.com>
+Date: Wed, 4 Nov 2026 10:20:46 +0100
+Subject: [PATCH] controller_fan: keep the fan on above a measured temperature
+
+A stepper or a heater target says nothing about residual heat: on the Q2 the
+chamber can stay hot long after the motors stop. temperature_limits lists
+sensors with a limit; above it the fan runs like with an enabled stepper, so
+idle_timeout also applies once the temperature falls back.
+---
+ klippy/extras/controller_fan.py | 25 +++++++++++++++++++++++++
+ 1 file changed, 25 insertions(+)
+
+diff --git a/klippy/extras/controller_fan.py b/klippy/extras/controller_fan.py
+index b1286b5..f4174b8 100644
+--- a/klippy/extras/controller_fan.py
++++ b/klippy/extras/controller_fan.py
+@@ -24,12 +24,33 @@ class ControllerFan:
+             'idle_speed', default=self.fan_speed, minval=0., maxval=1.)
+         self.idle_timeout = config.getint("idle_timeout", default=30, minval=0)
+         self.heater_names = config.getlist("heater", ("extruder",))
++        self.temperature_limits = []
++        for item in config.getlist("temperature_limits", ()):
++            name, sep, limit = item.rpartition(':')
++            try:
++                self.temperature_limits.append((name.strip(), float(limit)))
++            except ValueError:
++                sep = ''
++            if not sep:
++                raise config.error(
++                    "Option 'temperature_limits' in section '%s' must be a"
++                    " list of 'sensor name:temperature'" % (config.get_name(),))
++        self.temperature_sensors = []
+         self.last_on = self.idle_timeout
+         self.last_speed = 0.
+     def handle_connect(self):
+         # Heater lookup
+         pheaters = self.printer.lookup_object('heaters')
+         self.heaters = [pheaters.lookup_heater(n) for n in self.heater_names]
++        # Temperature limit lookup
++        for name, limit in self.temperature_limits:
++            sensor = self.printer.lookup_object(name, None)
++            if (sensor is None or not hasattr(sensor, 'get_status')
++                or 'temperature' not in sensor.get_status(0.)):
++                raise self.printer.config_error(
++                    "Unknown temperature sensor '%s' in temperature_limits"
++                    % (name,))
++            self.temperature_sensors.append((sensor, limit))
+         # Stepper lookup
+         all_steppers = self.stepper_enable.get_steppers()
+         if self.stepper_names is None:
+@@ -54,6 +75,10 @@ class ControllerFan:
+             _, target_temp = heater.get_temp(eventtime)
+             if target_temp:
+                 active = True
++        for sensor, limit in self.temperature_sensors:
++            temp = sensor.get_status(eventtime)['temperature']
++            if temp is not None and temp >= limit:
++                active = True
+         if active:
+             self.last_on = 0
+             speed = self.fan_speed
+-- 
+2.54.0 (Apple Git-157)
+

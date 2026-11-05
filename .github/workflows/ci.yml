@@ -97,6 +97,8 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq gcc-arm-none-eabi libnewlib-arm-none-eabi
       - name: Klipper + Q2 patches
         run: scripts/prepare-klipper.sh "$RUNNER_TEMP/klipper"
+      - name: Klipper patch tests
+        run: python3 tests/klipper/test_controller_fan.py "$RUNNER_TEMP/klipper"
       - name: Build main / thr / box
         run: scripts/build-firmware.sh "$RUNNER_TEMP/klipper" dist
       - uses: actions/upload-artifact@v4
