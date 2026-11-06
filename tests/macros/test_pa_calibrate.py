@@ -29,7 +29,8 @@ def macro_vars():
             for key, value in cfg.items() if key.startswith("variable_")}
 
 
-def printer(state="standby", pending=None, gate=-1, filament="Unloaded", k_opt=None, enabled=True):
+def printer(state="standby", pending=None, gate=-1, filament="Unloaded", k_opt=None, enabled=True,
+            mesh="", profiles=()):
     vars_ = dict(macro_vars(), enabled=enabled)
     return {
         "print_stats": {"state": state},
@@ -37,6 +38,7 @@ def printer(state="standby", pending=None, gate=-1, filament="Unloaded", k_opt=N
         "mmu": {"gate": gate, "filament": filament, "gate_spool_id": [26, 22, 23, 29],
                 "ttg_map": [0, 1, 2, 3]},
         "toolhead": {"homed_axes": "xyz"},
+        "bed_mesh": {"profile_name": mesh, "profiles": {name: {} for name in profiles}},
         "autopa": {"last": {"sweep": {"k_opt": k_opt}}},
         "gcode_macro _SPOOL_PA_VARS": vars_,
     }
@@ -131,7 +133,8 @@ def test_offer_during_a_print_has_no_calibrate_now():
 def test_calibrate_runs_on_the_spool_gate_with_the_material_range():
     run = Run("gcode_macro SPOOL_PA_CALIBRATE", {"SPOOL": "22"}, printer(pending={22: ENTRY}))
     assert run.commands[-1] == ("_SPOOL_PA_RUN", {"SPOOL": "22", "GATE": "1", "TEMP": "255", "FLOW": "0.965",
-                                               "KSTART": "0.02", "KEND": "0.12", "KSTEP": "0.01", "APPLY": "0"})
+                                               "KSTART": "0.02", "KEND": "0.12", "KSTEP": "0.01", "APPLY": "0",
+                                               "PRINT": "0"})
 
 
 def test_calibrate_refuses_during_a_print_unknown_spools_and_spools_out_of_the_box():
@@ -154,7 +157,51 @@ def test_run_loads_the_gate_and_sweeps_at_the_flow_ratio():
     assert "M221 S96.5" in run.lines and run.lines.index("M221 S96.5") < order.index("AUTOPA_SWEEP")
     assert run.commands[order.index("AUTOPA_SWEEP")][1] == {"APPLY": "0", "KSTART": "0.02", "KEND": "0.12",
                                                             "KSTEP": "0.01"}
-    assert order[-2:] == ["M221", "_SPOOL_PA_RESULT"]
+    sweep = order.index("AUTOPA_SWEEP")
+    assert order[sweep + 1:] == ["M221", "_SPOOL_PA_STATUS", "_SPOOL_PA_WIPE", "M104", "_SPOOL_PA_RESULT"]
+    assert run.lines[-2] == "M104 S0"
+    steps = [args["STEP"] for cmd, args in run.commands if cmd == "_SPOOL_PA_STATUS"]
+    assert steps == ["Loading slot 2", "Heating the nozzle to 255 C", "Measuring with the load cell, about 3 minutes",
+                     "Wiping the nozzle"]
+
+
+def test_run_in_a_print_keeps_the_heater_on():
+    params = {"SPOOL": "22", "GATE": "1", "TEMP": "255", "FLOW": "1", "KSTART": "0.02", "KEND": "0.12",
+              "KSTEP": "0.01", "PRINT": "1"}
+    run = Run("gcode_macro _SPOOL_PA_RUN", params, printer(gate=1, filament="Loaded", state="printing"))
+    assert "M104 S0" not in run.lines
+
+
+def test_wipe_sets_the_mesh_aside_and_restores_it():
+    saved = Run("gcode_macro _SPOOL_PA_WIPE", {"TEMP": "255"}, printer(mesh="ADAPTIVE", profiles=["ADAPTIVE"]))
+    assert names(saved) == ["BED_MESH_CLEAR", "NOZZLE_WIPE", "BED_MESH_PROFILE"]
+    assert saved.commands[-1] == ("BED_MESH_PROFILE", {"LOAD": "ADAPTIVE"})
+    unsaved = Run("gcode_macro _SPOOL_PA_WIPE", {"TEMP": "255"}, printer(mesh="adaptive-5x5"))
+    assert [c for c in unsaved.commands if c[0] == "BED_MESH_PROFILE"] == [
+        ("BED_MESH_PROFILE", {"SAVE": "_SPOOL_PA_KEEP"}), ("BED_MESH_PROFILE", {"LOAD": "_SPOOL_PA_KEEP"}),
+        ("BED_MESH_PROFILE", {"REMOVE": "_SPOOL_PA_KEEP"})]
+    none = Run("gcode_macro _SPOOL_PA_WIPE", {"TEMP": "255"}, printer())
+    assert names(none) == ["NOZZLE_WIPE"] and none.commands[0][1] == {"HOTEND": "255"}
+
+
+def test_status_shows_the_step_in_a_dialog_and_on_the_status_line():
+    run = Run("gcode_macro _SPOOL_PA_STATUS", {"SPOOL": "22", "STEP": "Wiping the nozzle"},
+              printer(pending={22: ENTRY}))
+    assert run.lines[0] == "M117 Pressure advance: Wiping the nozzle"
+    msgs = [args["MSG"] for cmd, args in run.commands if cmd == "RESPOND"]
+    assert msgs == ["action:prompt_begin Pressure advance: Sunlu Green", "action:prompt_text Wiping the nozzle...",
+                    "action:prompt_show"]
+
+
+def test_notice_is_a_dialog_until_ok_and_a_notification():
+    run = Run("gcode_macro _SPOOL_PA_NOTICE", {"TITLE": "Pressure advance saved", "MSG": "Sunlu Green: 0.0451"},
+              printer())
+    msgs = [args["MSG"] for cmd, args in run.commands if cmd == "RESPOND"]
+    assert "action:notify Sunlu Green: 0.0451" in msgs
+    assert "action:prompt_footer_button OK|_SPOOL_PA_CLOSE|primary" in msgs
+    assert run.lines[0] == "M117 Sunlu Green: 0.0451" and msgs[-1] == "action:prompt_show"
+    error = Run("gcode_macro _SPOOL_PA_NOTICE", {"TITLE": "x", "MSG": "y", "ERROR": "1"}, printer())
+    assert any(line.endswith("|_SPOOL_PA_CLOSE|error\"") for line in error.lines)
 
 
 def test_run_keeps_a_spool_already_loaded():
@@ -170,6 +217,10 @@ def test_valid_result_is_stored_and_the_spool_leaves_the_list():
     assert run.remote == [("q2_pa_store", {"spool_id": 22, "pa": 0.0451})]
     assert ("_SPOOL_PA_PENDING_SET", {"SPOOL": "22", "DROP_FILAMENT": "16"}) in run.commands
     assert ("SET_PRESSURE_ADVANCE", {"ADVANCE": "0.0451"}) in run.commands
+    # The status (which reads the spool's name from the list) comes before the spool leaves it
+    order = names(run)
+    assert order.index("_SPOOL_PA_STATUS") < order.index("_SPOOL_PA_PENDING_SET")
+    assert "_SPOOL_PA_NOTICE" not in order    # the component shows the saved value
 
 
 def test_edge_or_missing_result_is_not_stored_and_counts_a_try():
@@ -180,6 +231,8 @@ def test_edge_or_missing_result_is_not_stored_and_counts_a_try():
         assert ("_SPOOL_PA_PENDING_SET", {"SPOOL": "22", "FILAMENT": "16", "TEMP": "255", "FLOW": "0.965", "MATERIAL": "PETG",
                                        "NAME": "Sunlu Green", "TRIES": "1"}) in run.commands, run.lines
         assert "SET_PRESSURE_ADVANCE" not in names(run)
+        notice = [args for cmd, args in run.commands if cmd == "_SPOOL_PA_NOTICE"]
+        assert len(notice) == 1 and notice[0]["ERROR"] == "1" and notice[0]["MSG"].startswith("Sunlu Green: no valid")
 
 
 def test_print_start_calibrates_used_spools_on_their_first_try_only():

@@ -25,7 +25,19 @@ ok "Klipper configuration valid"
 info "Moonraker configuration"
 "${HOME}/moonraker-env/bin/python" "${HOME}/moonraker/moonraker/moonraker.py" -d "$data" > /dev/null 2>&1 &
 pid=$!
-trap 'kill $pid 2>/dev/null || true' EXIT
+# Moonraker's update manager runs git on the repos at start: wait for it to exit and for those
+# git commands to release their locks, or the next install step finds index.lock and fails
+stop_moonraker() {
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+    local _
+    for _ in $(seq 1 40); do
+        compgen -G "${HOME}/*/.git/index.lock" > /dev/null || return 0
+        sleep 0.25
+    done
+    warn "a git lock is still there after Moonraker stopped"
+}
+trap stop_moonraker EXIT
 for _ in $(seq 1 30); do
     sleep 1
     info_json="$(curl -s localhost:7125/server/info || true)"

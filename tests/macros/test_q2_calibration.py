@@ -166,7 +166,16 @@ def test_store_writes_the_filament_and_creates_missing_fields():
     assert patch == [("http://sm/api/v1/filament/16",
                       {"extra": {"orca_pressure_advance": json.dumps("0.0451"),
                                  "orca_enable_pressure_advance": json.dumps("1")}})]
-    assert "0.0451 saved" in server.components["klippy_apis"].gcode[-1]
+    assert server.components["klippy_apis"].gcode[-1] == (
+        '_SPOOL_PA_NOTICE ERROR=0 TITLE="Pressure advance saved" MSG="Sunlu Green 2: pressure advance 0.0451 '
+        'saved in Spoolman. OrcaSlicer presets follow within a minute"')
+
+
+def test_a_failed_save_shows_an_error_notice():
+    q2, server, http = component([])
+    run(server, "q2_pa_store", spool_id=99, pa=0.04)
+    last = server.components["klippy_apis"].gcode[-1]
+    assert last.startswith('_SPOOL_PA_NOTICE ERROR=1 TITLE="Pressure advance not saved" MSG="Spool 99: 0.0400')
 
 
 def test_klippy_ready_turns_the_offers_on():

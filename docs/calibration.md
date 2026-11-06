@@ -69,8 +69,11 @@ Keep `max_accel` in `[printer]` at or below what the recommendation allows for y
 **New spools from an NFC tag** (with Spoolman): when a tag creates a spool whose filament
 has no pressure advance yet, a dialog asks to measure it now, at the start of the next print
 that uses that spool, or never. The measurement is autopa's load-cell sweep, in the air over
-the chute (about 3 minutes, some filament into the bucket), at the temperature and flow ratio
-the slicer prints that filament with:
+the chute (about 3 minutes, some filament into the bucket), then the nozzle is wiped on the
+brush. Each step shows in a dialog and on the status line (HelixScreen, Mainsail, Fluidd), and
+the result (the saved value, or why nothing was saved) stays in a dialog until OK, with a
+HelixScreen notification. It runs at the temperature and flow ratio the slicer prints that
+filament with:
 
 - temperature: the filament's in Spoolman, which comes from SpoolmanDB when the tag's brand,
   material and colour match an entry there (Happy Hare patch 0007), else from the tag;

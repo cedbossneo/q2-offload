@@ -166,10 +166,17 @@ class Q2Calibration:
             if resp.has_error():
                 raise RuntimeError(f"Spoolman: filament {filament_id}: {resp.error}")
         except Exception as e:
-            await self._console(f"spool {spool_id}: pressure advance {pa} not saved ({e})")
+            logging.info(f"q2_calibration: spool {spool_id}: pressure advance {pa} not saved ({e})")
+            await self._notice("Pressure advance not saved",
+                               f"Spool {spool_id}: {pa:.{PA_DECIMALS}f} could not be saved in Spoolman ({e})", error=True)
             return
-        await self._console(f"{spool_name(spool)}: pressure advance {value} saved "
-                            "in Spoolman, OrcaSlicer presets follow within a minute")
+        await self._notice("Pressure advance saved",
+                           f"{spool_name(spool)}: pressure advance {value} saved in Spoolman. "
+                           "OrcaSlicer presets follow within a minute")
+
+    async def _notice(self, title: str, msg: str, error: bool = False) -> None:
+        """The result dialog and notification (_SPOOL_PA_NOTICE in q2_pa_calibrate.cfg)."""
+        await self.klippy.run_gcode(f"_SPOOL_PA_NOTICE ERROR={int(error)} TITLE=\"{quote(title)}\" MSG=\"{quote(msg)}\"")
 
 
 def load_component(config) -> Q2Calibration:
