@@ -19,7 +19,8 @@ it forwards the three MCU serial links over the network, runs the touchscreen
 
 Everything is configured: the Klipper configuration for the Q2 (load cell probing, adaptive
 bed mesh, 200 MHz mainboard, 120 MHz toolhead), Happy Hare for the Qidi Box (NFC tags →
-Spoolman, drying with a keep-dry watchdog and spool rotation, a dialog to retry a failed
+Spoolman with SpoolmanDB data, a load-cell pressure advance calibration offered for each new
+filament, drying with a keep-dry watchdog and spool rotation, a dialog to retry a failed
 load), purge bucket and chute macros, power-loss recovery, the web UIs, and an OrcaSlicer
 integration: the slicer sees the Box, and selects the preset of the exact spool in each
 slot.

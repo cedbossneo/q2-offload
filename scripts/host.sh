@@ -200,7 +200,24 @@ host_extensions() {
     install -m 644 "$tmp" "${HOME}/klipper/klippy/extras/gcode_shell_command.py"
     rm -f "$tmp"
     install -m 644 "${Q2_ROOT}/host/extras/qidi_box_compat.py" "${HOME}/klipper/klippy/extras/qidi_box_compat.py"
-    ok "timelapse, mainsail-config, gcode_shell_command, qidi_box_compat"
+    host_calibration
+    ok "timelapse, mainsail-config, gcode_shell_command, qidi_box_compat, q2_calibration"
+}
+
+# Pressure advance calibration of spools created from an NFC tag (q2_pa_calibrate.cfg): the
+# Moonraker component reads and writes Spoolman, so it needs Spoolman and the Box
+host_calibration() {
+    ln -sfn "${Q2_ROOT}/host/components/q2_calibration.py" "${HOME}/moonraker/moonraker/components/q2_calibration.py"
+    local conf="${CFG}/moonraker.conf"
+    [ -f "$conf" ] || return 0
+    if has spoolman && has_box; then
+        grep -q '^\[q2_calibration\]' "$conf" && return 0
+        printf '\n# q2-offload: pressure advance calibration of spools created from an NFC tag\n[q2_calibration]\n' >> "$conf"
+    else
+        grep -q '^\[q2_calibration\]' "$conf" || return 0
+        drop_section "$conf" q2_calibration
+    fi
+    mkdir -p "$STATE_DIR" && touch "${STATE_DIR}/moonraker-changed"
 }
 
 host_moonraker() {
