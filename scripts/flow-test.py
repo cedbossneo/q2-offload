@@ -145,7 +145,6 @@ def force_check(watch, recent, elapsed):
     stop = limit_check(watch, recent)
     if stop or elapsed < PREDICT_AFTER_S or len(recent) < 4:
         return stop
-        return None
     force, rising = recent[-1][1], max(0.0, rate(recent))
     ceiling = CEILING * watch.limit
     if force >= ceiling:
