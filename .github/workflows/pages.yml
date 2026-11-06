@@ -1,10 +1,10 @@
-# Publishes site/ (with the screenshots it uses from docs/images) to GitHub Pages
+# Publishes the project page and the documentation (site/, built from docs/) to GitHub Pages
 name: Pages
 
 on:
   push:
     branches: [main]
-    paths: [site/**, docs/images/**, .github/workflows/pages.yml]
+    paths: [site/**, docs/**, .github/workflows/pages.yml]
   workflow_dispatch:
 
 permissions:
@@ -22,16 +22,25 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
+    defaults:
+      run:
+        working-directory: site
     steps:
       - uses: actions/checkout@v4
-      - name: Assemble the site
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: Build
         run: |
-          mkdir _site
-          cp -r site/. _site/
-          cp docs/images/q2-box-tab.png _site/
+          npm ci --no-audit --no-fund
+          npm run build
+          cp ../docs/images/q2-box-tab.png dist/
+          python3 scripts/check-links.py
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: _site
+          path: site/dist
       - id: deploy
         uses: actions/deploy-pages@v4

@@ -34,7 +34,7 @@ calibrate_load_cell_tare() {
     local tare
     [ "$(status_field load_cell_probe is_calibrated)" = True ] && return 0
     [ -n "$(status_field load_cell_probe counts_per_gram)" ] || {
-        warn "load cell has no counts_per_gram: run LOAD_CELL_CALIBRATE (docs/calibration.md)"; return 1; }
+        warn "load cell has no counts_per_gram: run LOAD_CELL_CALIBRATE (https://cedbossneo.github.io/q2-offload/docs/install/calibrate/)"; return 1; }
     cat <<EOF
 
 ${C_WARN}Load cell zero${C_OFF}: the Z probe needs the load cell reading at rest.
@@ -118,14 +118,14 @@ PY
         return 0
     fi
     warn "load cell check failed: ${result}"
-    warn "nothing will home the printer; fix it, then run the calibrations from docs/calibration.md"
+    warn "nothing will home the printer; fix it, then run the calibrations from https://cedbossneo.github.io/q2-offload/docs/install/calibrate/"
     return 1
 }
 
 calibrate_offer() {
     local saved=0
     if [ "${ASSUME_YES:-0}" = 1 ] || [ ! -t 0 ]; then
-        info "Skipping the calibrations (non-interactive run): see docs/calibration.md"
+        info "Skipping the calibrations (non-interactive run): see https://cedbossneo.github.io/q2-offload/docs/install/calibrate/"
         return 0
     fi
     cat <<EOF
@@ -153,7 +153,7 @@ EOF
     fi
     cat <<EOF
 
-Still worth doing yourself (docs/calibration.md):
+Still worth doing yourself (https://cedbossneo.github.io/q2-offload/docs/install/calibrate/):
   - load cell scale with a known weight: LOAD_CELL_CALIBRATE
 $(has_box && echo '  - Box gears and bowden: MMU_CALIBRATE_GEAR, MMU_CALIBRATE_BOWDEN (Happy Hare)')
   - pressure advance per filament: autopa

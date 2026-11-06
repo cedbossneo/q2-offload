@@ -153,7 +153,7 @@ COMPONENT_HELP=(
     "mainsail|Mainsail web interface (port ${MAINSAIL_PORT})"
     "fluidd|Fluidd web interface (port ${FLUIDD_PORT})"
     "spoolman|Spoolman spool inventory, filled by the Box NFC tags (Docker, port 7912)"
-    "autopa|autopa: pressure advance calibration with the printer camera"
+    "autopa|autopa: pressure advance calibration with the load cell"
     "detect|Failure detection: Obico's detector watches the camera, pauses failing prints (Docker, 1 GB disk)"
 )
 
@@ -247,7 +247,7 @@ This will:
   1. install Klipper, Moonraker, Happy Hare and the selected components on THIS machine
   2. convert the printer board into a serial proxy (its own Klipper/Moonraker stop)
   3. flash the mainboard, toolhead$(has_box && echo ' and Qidi Box') MCUs
-Read README.md (warnings) first. A backup of the printer config is made before step 2.
+Read https://cedbossneo.github.io/q2-offload/docs/start/before-you-start/ first. A backup of the printer config is made before step 2.
 EOF
     confirm "Continue?" n || exit 0
     # Box present or not decides the whole host setup: checked before anything is installed
@@ -417,7 +417,7 @@ final_notes() {
     has detect && echo "  Detection   $(web_url "$(web_port)")/detect/"
     cat <<EOF
 
-Next: calibrate this machine (load cell, PID, input shaper$(has_box && echo ', Box gears')): docs/calibration.md
+Next: calibrate this machine (load cell, PID, input shaper$(has_box && echo ', Box gears')): https://cedbossneo.github.io/q2-offload/docs/install/calibrate/
 Update later from the update manager in Mainsail/Fluidd, or with ./install.sh update
 EOF
 }

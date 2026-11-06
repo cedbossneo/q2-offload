@@ -19,7 +19,7 @@ proot() { ssh -tt "${SSH_OPTS[@]}" "${PRINTER_USER}@${PRINTER_IP}" sudo /bin/bas
 # the stock image have what the flash needs? Stops with the reason before anything is flashed.
 printer_check_stock() {
     printer_fetch_hid_flash
-    proot stock-check || die "the printer is not ready for a first conversion; nothing was flashed. See docs/recovery.md"
+    proot stock-check || die "the printer is not ready for a first conversion; nothing was flashed. See https://cedbossneo.github.io/q2-offload/docs/help/flashing/"
 }
 
 printer_ssh_key() {
@@ -39,7 +39,7 @@ printer_push() {
     if ! pssh "mkdir -p ${PRINTER_WORK}" 2>/dev/null; then
         info "Creating ${PRINTER_WORK} on the printer (printer sudo password)"
         ssh -tt "${SSH_OPTS[@]}" "${PRINTER_USER}@${PRINTER_IP}" sudo install -d -o "$PRINTER_USER" "$PRINTER_WORK" \
-            || die "${PRINTER_USER} has no root access on the printer; nothing was changed (see docs/recovery.md)"
+            || die "${PRINTER_USER} has no root access on the printer; nothing was changed (see https://cedbossneo.github.io/q2-offload/docs/help/flashing/)"
     fi
     pssh "mkdir -p ${PRINTER_WORK}/firmware ${PRINTER_WORK}/deployer"
     tmp="$(mktemp -d)"
@@ -161,7 +161,7 @@ printer_convert() {
 ${C_WARN}First conversion: Katapult bootloader on the $(has_box && echo three MCUs || echo mainboard and toolhead)${C_OFF}
 Qidi's own update scripts flash a Katapult "deployer" (n3oney/qidi-q2-klipper) while the
 stock firmware still runs. Afterwards Katapult replaces Qidi's bootloader: Qidi's firmware
-can still be flashed back through Katapult (docs/recovery.md), but recovering from a power
+can still be flashed back through Katapult (https://cedbossneo.github.io/q2-offload/docs/help/back-to-stock/), but recovering from a power
 cut during THIS step needs an ST-Link.
   - keep the printer powered and connected the whole time
   - one MCU at a time; each one is checked before the next
@@ -180,7 +180,7 @@ EOF
         sudo systemctl stop klipper q2-serial-bridge@main:7001 q2-serial-bridge@thr:7002 q2-serial-bridge@mmu:7003 2>/dev/null || true  # all three: a Box bridge may be left over
     fi
     # shellcheck disable=SC2086  # $deploy is empty or one word
-    proot convert "$(firmware_id)" $deploy || die "firmware phase failed; see docs/recovery.md"
+    proot convert "$(firmware_id)" $deploy || die "firmware phase failed; see https://cedbossneo.github.io/q2-offload/docs/help/flashing/"
     ok "all MCUs on firmware $(firmware_id)"
 }
 

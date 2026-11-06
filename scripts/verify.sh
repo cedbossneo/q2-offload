@@ -67,7 +67,7 @@ verify_install() {
     check "printer camera" http_ok "http://${PRINTER_IP}/webcam/?action=snapshot"
     check "HelixScreen running, pointed at ${HOST_IP}" printer_helixscreen_ok
     if [ "$VERIFY_FAILED" = 1 ]; then
-        warn "some checks failed: see the FAIL lines above, ./install.sh status, ${DATA}/logs/ and docs/recovery.md"
+        warn "some checks failed: see the FAIL lines above, ./install.sh status, ${DATA}/logs/ and https://cedbossneo.github.io/q2-offload/docs/help/klipper-does-not-connect/"
         return 1
     fi
     ok "everything answers"

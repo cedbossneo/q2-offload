@@ -29,6 +29,7 @@
     <a href="#ch-setup">How it works</a>
     <a href="#made">What's in it</a>
     <a href="#install">Install</a>
+    <a href="docs/">Docs</a>
     <a class="gh" href="https://github.com/cedbossneo/q2-offload">GitHub</a>
   </nav>
 </header>
@@ -402,12 +403,12 @@ git checkout "$(git tag -l 'v*' --sort=-creatordate | grep -v -- -beta | head -1
             <li>A host on Debian 12 or 13, or Ubuntu 22.04, 24.04 or 26.04 LTS, x86_64 or arm64. CI installs on each of them.</li>
             <li>Both on the same network, wired if possible.</li>
           </ul>
-          <a class="btn ghost" href="https://github.com/cedbossneo/q2-offload#install">Read the full install guide</a>
+          <a class="btn ghost" href="docs/">Read the install guide</a>
         </div>
       </div>
       <div class="caution">
         <h3>Read this before you start</h3>
-        <p>It replaces Qidi's firmware on three microcontrollers. The first conversion replaces Qidi's bootloader with Katapult: a power cut during that step, or a wrong image, can only be recovered with an ST-Link. Converting from stock firmware 01.01.02 or newer isn't tested yet. Read the <a href="https://github.com/cedbossneo/q2-offload/blob/main/docs/recovery.md">recovery guide</a> first. No warranty: you do this at your own risk.</p>
+        <p>It replaces Qidi's firmware on three microcontrollers. The first conversion replaces Qidi's bootloader with Katapult: a power cut during that step, or a wrong image, can only be recovered with an ST-Link. Converting from stock firmware 01.01.02 or newer isn't tested yet. Read <a href="docs/start/before-you-start/">Before you start</a> first. No warranty: you do this at your own risk.</p>
       </div>
     </div>
   </section>
