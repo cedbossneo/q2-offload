@@ -1,0 +1,77 @@
+/* Same look as the project page: indigo ink, PEI gold accent, filament colours */
+:root {
+  --sl-font: "Hanken Grotesk", system-ui, sans-serif;
+  --sl-font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --sl-color-accent-low: #3a2f14;
+  --sl-color-accent: #d4b06a;
+  --sl-color-accent-high: #f1dcae;
+  --sl-color-white: #eef0fa;
+  --sl-color-gray-1: #dfe2f6;
+  --sl-color-gray-2: #b9bee0;
+  --sl-color-gray-3: #8f96c4;
+  --sl-color-gray-4: #4c5390;
+  --sl-color-gray-5: #2d3370;
+  --sl-color-gray-6: #1c2150;
+  --sl-color-black: #141836;
+}
+:root[data-theme='light'] {
+  --sl-color-accent-low: #f3e6c8;
+  --sl-color-accent: #8a6420;
+  --sl-color-accent-high: #4a3510;
+  --sl-color-white: #141836;
+  --sl-color-gray-1: #1c2150;
+  --sl-color-gray-2: #2d3370;
+  --sl-color-gray-3: #4c5390;
+  --sl-color-gray-4: #8f96c4;
+  --sl-color-gray-5: #c9cdea;
+  --sl-color-gray-6: #eceef9;
+  --sl-color-gray-7: #f6f7fc;
+  --sl-color-black: #ffffff;
+}
+h1, h2, h3, .site-title {
+  font-family: "Bricolage Grotesque", var(--sl-font);
+  font-variation-settings: "wdth" 85;
+  letter-spacing: -0.01em;
+}
+h1#_top { font-weight: 800; font-variation-settings: "wdth" 78; }
+
+/* Ordered lists in a page are steps: numbered circles on a line */
+.sl-markdown-content > ol {
+  list-style: none;
+  counter-reset: step var(--step-start, 0);
+  padding-inline-start: 0;
+}
+.sl-markdown-content > ol > li {
+  counter-increment: step;
+  position: relative;
+  padding-inline-start: 2.75rem;
+  padding-bottom: 0.9rem;
+  margin-top: 0;
+}
+.sl-markdown-content > ol > li::before {
+  content: counter(step);
+  position: absolute; inset-inline-start: 0; top: -0.05rem;
+  width: 1.9rem; height: 1.9rem; border-radius: 50%;
+  display: grid; place-items: center;
+  font-weight: 700; font-size: 0.9rem;
+  color: var(--sl-color-black); background: var(--sl-color-accent);
+}
+.sl-markdown-content > ol > li::after {
+  content: "";
+  position: absolute; inset-inline-start: 0.92rem; top: 2.1rem; bottom: 0.2rem;
+  width: 2px; background: var(--sl-color-gray-5);
+}
+.sl-markdown-content > ol > li:last-child::after { display: none; }
+
+/* Folded details */
+.sl-markdown-content details {
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.6rem;
+  padding: 0.6rem 1rem;
+}
+.sl-markdown-content details summary { cursor: pointer; font-weight: 600; }
+.sl-markdown-content details[open] summary { margin-bottom: 0.6rem; }
+
+/* Checklists: the box replaces the bullet */
+.sl-markdown-content ul:has(> li > input[type='checkbox']) { list-style: none; padding-inline-start: 0.2rem; }
+.sl-markdown-content li > input[type='checkbox'] { margin-inline-end: 0.5rem; accent-color: var(--sl-color-accent); }

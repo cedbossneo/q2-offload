@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>q2-offload: open software for the Qidi Q2</title>
+<meta name="description" content="Run mainline Klipper, Happy Hare and Spoolman for a Qidi Q2 and Qidi Box on your own computer. Tag a spool, put it in the Box, and the printer does the rest.">
+<meta name="color-scheme" content="dark">
+<meta property="og:title" content="q2-offload: open software for the Qidi Q2">
+<meta property="og:description" content="Tag a spool, put it in the Box: the printer knows it, measures its pressure advance and prints with the right preset.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%23141836' stroke='%23d4b06a' stroke-width='6'/%3E%3Ccircle cx='32' cy='32' r='16' fill='%2334c17b'/%3E%3Ccircle cx='32' cy='32' r='6' fill='%23141836'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700&family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,300..800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav class="chapters" aria-label="Chapters">
+  <a href="#ch-setup" data-p="1" style="--c: var(--pei)">Set up</a>
+  <a href="#ch-spool" data-p="6" style="--c: var(--green)">A new spool</a>
+  <a href="#ch-daily" data-p="15" style="--c: var(--blue)">Every day</a>
+</nav>
+<header class="bar">
+  <a class="brand" href="#top" aria-label="q2-offload home">
+    <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="27" fill="none" stroke="#d4b06a" stroke-width="6"/><circle cx="32" cy="32" r="15" fill="#34c17b"/><circle cx="32" cy="32" r="5.5" fill="#141836"/></svg>
+    q2-offload
+  </a>
+  <nav aria-label="Sections">
+    <a href="#ch-setup">How it works</a>
+    <a href="#made">What's in it</a>
+    <a href="#install">Install</a>
+    <a href="docs/">Docs</a>
+    <a class="gh" href="https://github.com/cedbossneo/q2-offload">GitHub</a>
+  </nav>
+</header>
+
+<div class="story" id="top">
+  <div class="stage" aria-hidden="true">
+    <canvas id="scene"></canvas>
+    <span class="chip-label">Mainboard MCU</span>
+    <span class="chip-label">Toolhead MCU</span>
+    <span class="chip-label">Qidi Box MCU</span>
+    <div class="overlay">
+      <div class="ov term" data-from="1.25" data-to="4.85">
+        <div class="dots"><i></i><i></i><i></i></div>
+        <p class="cmd" data-at="1.3">$ ./install.sh --printer 192.168.1.50</p>
+        <p data-at="1.5"><span class="muted">components</span> Mainsail Fluidd Spoolman autopa detect</p>
+        <p data-at="1.8"><span class="ok">✓</span> Klipper, Moonraker, Happy Hare on the host</p>
+        <p data-at="2.25"><span class="ok">✓</span> printer config backed up</p>
+        <p data-at="2.55"><span class="ok">✓</span> Katapult on the mainboard</p>
+        <p data-at="2.75"><span class="ok">✓</span> Katapult on the toolhead</p>
+        <p data-at="2.95"><span class="ok">✓</span> Katapult on the Qidi Box</p>
+        <p data-at="3.3"><span class="ok">✓</span> application offsets checked</p>
+        <p data-at="3.95"><span class="ok">✓</span> Klipper flashed on the three MCUs</p>
+        <p data-at="4.35"><span class="ok">✓</span> printer board: serial bridge on 7001-7003</p>
+        <p data-at="4.5"><span class="ok">✓</span> HelixScreen installed, pointed at the host</p>
+        <p data-at="4.65"><span class="muted">done, open http://&lt;host&gt;/</span></p>
+      </div>
+
+      <div class="ov" data-from="4.85" data-to="5.45">
+        <div class="ov-head">Network links<small>printer board</small></div>
+        <dl class="rec">
+          <dt>Mainboard MCU</dt><dd>port 7001</dd>
+          <dt>Toolhead MCU</dt><dd>port 7002</dd>
+          <dt>Qidi Box MCU</dt><dd>port 7003</dd>
+          <dt>Touchscreen</dt><dd>to the host, 7125</dd>
+          <dt>Camera</dt><dd>/webcam/</dd>
+        </dl>
+      </div>
+
+      <div class="ov" data-from="9.55" data-to="10.45">
+        <div class="ov-head"><span class="swatch"></span>Spool 22 created<small>Spoolman</small></div>
+        <dl class="rec">
+          <dt>Filament</dt><dd>Sunlu PETG Green</dd>
+          <dt>Nozzle</dt><dd>255 °C <span class="src">SpoolmanDB</span></dd>
+          <dt>Bed</dt><dd>75 °C <span class="src">SpoolmanDB</span></dd>
+          <dt>Density</dt><dd>1.27 g/cm³</dd>
+          <dt>Spool weight</dt><dd>1000 g</dd>
+          <dt>Gate</dt><dd>1</dd>
+        </dl>
+        <p class="note">Example values. The tag gives brand, material and colour; the manufacturer data comes from SpoolmanDB.</p>
+      </div>
+      <div class="ov" data-from="10.55" data-to="11.45">
+        <div class="ov-head">New filament<small>Touchscreen</small></div>
+        <p class="dialog-q">Sunlu PETG Green has no pressure advance yet. Measure it with the load cell?</p>
+        <div class="dialog-btns">
+          <span class="main" id="btn-now">Calibrate now</span>
+          <span>At next print</span>
+          <span>Skip</span>
+        </div>
+      </div>
+      <div class="ov chart" id="chart" data-from="11.5" data-to="12.5">
+        <div class="ov-head"><span class="swatch"></span>Measuring pressure advance<small>autopa</small></div>
+        <svg viewBox="0 0 320 170" role="img" aria-label="Pressure error for each pressure advance value tried, lowest at 0.042">
+          <line class="axis" x1="36" y1="140" x2="310" y2="140"/>
+          <line class="axis" x1="36" y1="12" x2="36" y2="140"/>
+          <text x="36" y="158">0.02</text><text x="284" y="158">0.12</text>
+          <text x="2" y="20">error</text>
+          <polyline class="curve" id="curve" points=""/>
+          <g id="dots"></g>
+          <circle class="best" id="best" r="6"/>
+          <text class="best-label" id="best-label">K 0.042</text>
+        </svg>
+        <div class="chart-steps"><span data-at="11.55">255 °C</span><span data-at="11.6">flow 0.95</span><span data-at="11.75">sweep 0.02 to 0.12</span><span data-at="12.35">wipe nozzle</span></div>
+      </div>
+      <div class="ov" data-from="12.6" data-to="13.55">
+        <div class="toast">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#34c17b"/><path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#0d1026" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div><b>Pressure advance saved</b><br>Sunlu Green: pressure advance 0.042 saved in Spoolman. OrcaSlicer presets follow within a minute.</div>
+        </div>
+        <div class="preset"><span class="swatch"></span><b>Sunlu PETG Green</b><span class="k">PA 0.042</span></div>
+        <p class="note">The next spool of this filament reuses the value: no second calibration.</p>
+      </div>
+      <div class="ov" data-from="13.65" data-to="14.45">
+        <div class="ov-head"><span class="swatch"></span>Printing<small id="layer">layer 0 of 210</small></div>
+        <p>Gate 1, Sunlu PETG Green, with its own preset and pressure advance.</p>
+        <div class="meter"><i id="meter"></i></div>
+      </div>
+
+      <div class="ov" data-from="14.5" data-to="15.25">
+        <div class="ov-head">Drying at 45 °C<small>Box page</small></div>
+        <div class="dry-grid">
+          <div><small>Time left</small><span id="dry-left">4 h 52 min left</span></div>
+          <div><small>Humidity</small><span class="big" id="dry-hum">41 %</span></div>
+        </div>
+        <div class="meter heat"><i id="dry-meter"></i></div>
+        <p class="note">PLA is loaded next to the PETG, so the lowest temperature wins. Keep-dry starts a new cycle when the humidity goes above 35 %.</p>
+      </div>
+      <div class="ov" data-from="15.3" data-to="16.4">
+        <div class="ov-head">Gates<small>Happy Hare</small></div>
+        <div class="gatemap">
+          <div><span class="g">0</span><span class="swatch" style="background: var(--yellow); box-shadow: none"></span><span>PLA Yellow</span><span class="st">ready</span></div>
+          <div id="gr-1"><span class="g">1</span><span class="swatch" style="box-shadow: none"></span><span>PETG Green</span><span class="st" id="gs-1">in extruder</span></div>
+          <div id="gr-2"><span class="g">2</span><span class="swatch" style="background: var(--red); box-shadow: none"></span><span>PETG Red</span><span class="st" id="gs-2">ready</span></div>
+          <div><span class="g">3</span><span class="swatch" style="background: var(--blue); box-shadow: none"></span><span>PLA Blue</span><span class="st">ready</span></div>
+        </div>
+        <p class="note">If a load fails, the touchscreen offers to retry or recover it.</p>
+      </div>
+      <div class="ov" data-from="16.45" data-to="17.0">
+        <div class="ov-head">On the touchscreen<small>HelixScreen</small></div>
+        <ul class="helix-list">
+          <li>Temperatures and print progress</li>
+          <li>Each gate of the Box, and its drying</li>
+          <li>The calibration and load dialogs</li>
+        </ul>
+      </div>
+      <div class="ov" id="detect" data-from="17.05" data-to="99">
+        <div class="ov-head">Failure detection<small>Obico detector</small></div>
+        <svg viewBox="0 0 320 160" role="img" aria-label="Failure score over the print, rising above the warning and pause levels">
+          <line class="axis" x1="20" y1="140" x2="310" y2="140"/>
+          <line class="lvl w" x1="20" y1="80" x2="310" y2="80"/><text class="tw" x="24" y="74">warning</text>
+          <line class="lvl p" x1="20" y1="40" x2="310" y2="40"/><text class="tp" x="24" y="34">pause</text>
+          <polyline id="det-curve" points=""/>
+        </svg>
+        <p class="verdict"><span class="v-quiet">Watching: a frame every 10 s</span><span class="v-warn">Warning sent to your phone</span><span class="v-pause">Print paused, picture sent to your phone</span></p>
+        <p class="note">Pausing needs pause mode. The default, observe mode, only notifies.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="panels" id="story">
+    <section class="panel hero">
+      <div class="panel-card">
+        <h1>Your Qidi Q2, on open software</h1>
+        <p class="lede">Mainline Klipper, Happy Hare and Spoolman run on a computer next to your printer. Tag a spool, put it in the Box, and the printer takes it from there.</p>
+        <div class="actions">
+          <a class="btn primary" href="#install">Install</a>
+          <a class="btn ghost" href="#ch-setup">See how it works</a>
+        </div>
+        <p class="scroll-hint"><span></span>Scroll: setting it up, a new spool, and every day</p>
+      </div>
+    </section>
+
+    <section class="panel" id="ch-setup">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--pei)">1</span>
+        <h2>A computer next to the printer</h2>
+        <p>A mini PC, a NAS or a Raspberry Pi 4/5 on Debian or Ubuntu, wired to the same network as the printer. That's where Klipper will run.</p>
+        <p class="under">Debian 12 and 13, Ubuntu 22.04, 24.04 and 26.04, x86_64 and arm64: CI installs on each of them.</p>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--pei)">2</span>
+        <h2>One installer</h2>
+        <p>It installs Klipper, Moonraker, Happy Hare and the components you pick from its menu, then asks before every step that touches the printer.</p>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--pei)">3</span>
+        <h2>Katapult, without an ST&#8209;Link</h2>
+        <p>After a backup of the printer config, Qidi's own update scripts put the Katapult bootloader on the mainboard, the toolhead and the Box.</p>
+        <p class="under">This first conversion is the one risky step: a power cut during it can only be recovered with an ST&#8209;Link.</p>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--pei)">4</span>
+        <h2>Klipper on all three MCUs</h2>
+        <p>It checks each MCU's application offset before writing, then flashes Klipper through Katapult. Later updates reflash the same way, after a typed confirmation.</p>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--pei)">5</span>
+        <h2>The printer's board becomes a bridge</h2>
+        <p>Its stock Klipper and screen are stopped. It forwards the three MCU links over the network, and runs HelixScreen on the touchscreen, connected to the host.</p>
+        <p class="under">If the printer or the host restarts, a watchdog reconnects Klipper on its own.</p>
+      </div>
+    </section>
+
+    <section class="panel" id="ch-spool">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--green)">1</span>
+        <h2>A new spool</h2>
+        <p>Any brand. It doesn't need a chip from the manufacturer or a reader of its own.</p>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--green)">2</span>
+        <h2>Stick an NFC tag on it</h2>
+        <p>An NTAG215 sticker on the flange, on the side that faces the neighbouring gate. Leave it unlocked.</p>
+        <p class="under">The tags cost a few cents each and can be rewritten.</p>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--green)">3</span>
+        <h2>Write it from your phone</h2>
+        <p>An OpenSpool app writes brand, material, colour and temperatures to the tag. It's an open format, read by other printers too.</p>
+        <p class="under">Spell brand and material the same way each time, so Spoolman doesn't create duplicates.</p>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--green)">4</span>
+        <h2>Put it in the Box</h2>
+        <p>Any of the four gates. When the Box preloads the spool, its NFC reader picks up the tag.</p>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--green)">5</span>
+        <h2>The printer knows the spool</h2>
+        <p>Happy Hare creates the spool in Spoolman on the first scan. When brand, material and colour match SpoolmanDB, it gets the manufacturer's name, temperatures, density and spool weight.</p>
+        <p class="under">Later scans of the same tag select that spool again, in whatever gate you put it.</p>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--green)">6</span>
+        <h2>It asks before it measures</h2>
+        <p>For a filament it has never measured, the touchscreen offers to calibrate pressure advance now, at the next print that uses it, or not at all.</p>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--green)">7</span>
+        <h2>The load cell measures it</h2>
+        <p>At the temperature and flow ratio your slicer prints that filament with, the nozzle tries a range of pressure advance values over the purge chute and the load cell picks the best one. Then it wipes the nozzle.</p>
+        <p class="under">The sweep is autopa's. Each step shows on the touchscreen, Mainsail and Fluidd.</p>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--green)">8</span>
+        <h2>Saved once, used everywhere</h2>
+        <p>The value is stored on the filament in Spoolman, and the OrcaSlicer presets pick it up within a minute. Your next spool of the same filament reuses it.</p>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--green)">9</span>
+        <h2>Print</h2>
+        <p>OrcaSlicer sees what's in each gate and selects the preset of that exact spool. You slice, send, and the printer loads it.</p>
+      </div>
+    </section>
+
+    <section class="panel" id="ch-daily">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--blue)">1</span>
+        <h2>Dry filament in the Box</h2>
+        <p>Start a cycle from the Box page or the touchscreen: each material has its temperature and time, and the time left shows as it runs. Afterwards, keep-dry watches the humidity.</p>
+        <p class="under">With the spools out, the Box turns each empty gate every 5 minutes so it heats evenly, like the stock firmware.</p>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--blue)">2</span>
+        <h2>Happy Hare runs the Box</h2>
+        <p>It unloads one gate and loads another for a colour change, keeps the gate map in sync with Spoolman, and tracks what is left on each spool.</p>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--blue)">3</span>
+        <h2>HelixScreen on the printer</h2>
+        <p>The touchscreen runs HelixScreen, an open Klipper interface, talking to the host. It shows the Box, the drying, and the dialogs q2-offload opens.</p>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--blue)">4</span>
+        <h2>A camera watches every print</h2>
+        <p>Obico's spaghetti detector looks at a frame every 10 seconds, on your host. It warns you, and can pause the print and send you the picture.</p>
+        <p class="under">Every decision is kept with its picture, so you can see how reliable it is on your printer.</p>
+      </div>
+    </section>
+    <div class="panel tail" aria-hidden="true"></div>
+  </div>
+</div>
+
+<main>
+  <section class="made" id="made">
+    <div class="wrap">
+      <h2 class="section-title">Made here, for the Q2</h2>
+      <p class="section-lede">The parts that didn't exist anywhere else. All of it is in the repository, and the same installer sets it up.</p>
+      <ul class="feature-list">
+        <li style="--c: var(--pei)"><h3>The installer and updates</h3><p>Converts a stock printer, then updates from Mainsail or Fluidd on the stable channel (tested on a printer) or the latest one.</p></li>
+        <li style="--c: var(--pei)"><h3>The network bridge</h3><p>Serial links over TCP to the printer's board, and a watchdog that reconnects Klipper after a restart or a dropped link.</p></li>
+        <li style="--c: var(--green)"><h3>Q2 configuration and Klipper patches</h3><p>Load cell probing, an adaptive bed mesh, purge bucket and chute macros, power-loss recovery, and Klipper patches such as board fan temperature limits and a load cell timing fix.</p></li>
+        <li style="--c: var(--green)"><h3>NFC spools and pressure advance</h3><p>SpoolmanDB data for any brand, and a load cell calibration offered for each new filament, saved in Spoolman.</p></li>
+        <li style="--c: var(--yellow)"><h3>Box drying page</h3><p>Humidity, temperature and loaded spools, a drying cycle with its time left, keep-dry settings, and spool rotation with the spools out.</p></li>
+        <li style="--c: var(--red)"><h3>Failure detection service</h3><p>Runs Obico's detector on your host with its alert rules, a live page, a history of every print, and notifications through Apprise.</p></li>
+        <li style="--c: var(--blue)"><h3>Q2 Spool Presets for OrcaSlicer</h3><p>A Box tab in the slicer, with one preset per Spoolman spool, its flow ratio and pressure advance.</p></li>
+        <li style="--c: var(--blue)"><h3>Happy Hare for the Qidi Box</h3><p>Its configuration for the Box, a retry dialog for failed loads, and patches proposed upstream to Happy Hare.</p></li>
+      </ul>
+      <figure class="shot">
+        <img src="q2-box-tab.png" alt="The Q2 Box tab in OrcaSlicer, listing the spool loaded in each gate" loading="lazy" width="960" height="640">
+        <figcaption>
+          <h3>The slicer sees the Box</h3>
+          <p>The Q2 Box tab in OrcaSlicer shows what is loaded in each gate, and selects the preset of that spool.</p>
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="oss" id="oss">
+    <div class="wrap">
+      <h2 class="section-title">Built on open source</h2>
+      <p class="section-lede">Everything that runs your printer is free software you can read, change and keep.</p>
+      <ul class="oss-list">
+        <li><a href="https://github.com/Klipper3d/klipper">Klipper</a><p>The firmware, running on the host and the three MCUs.</p></li>
+        <li><a href="https://github.com/Arksine/moonraker">Moonraker</a><p>The API that the web interfaces, the touchscreen and the slicer talk to.</p></li>
+        <li><a href="https://github.com/Arksine/katapult">Katapult</a><p>The bootloader that lets the MCUs be reflashed over their links.</p></li>
+        <li><a href="https://github.com/moggieuk/Happy-Hare">Happy Hare</a><p>Runs the Qidi Box: gates, loads, NFC tags, drying.</p></li>
+        <li><a href="https://github.com/Donkie/Spoolman">Spoolman</a><p>Keeps every spool and filament, with SpoolmanDB's manufacturer data.</p></li>
+        <li><a href="https://github.com/prestonbrown/helixscreen">HelixScreen</a><p>The touchscreen interface.</p></li>
+        <li><a href="https://github.com/mainsail-crew/mainsail">Mainsail</a> and <a href="https://github.com/fluidd-core/fluidd">Fluidd</a><p>The web interfaces.</p></li>
+        <li><a href="https://github.com/G0BL1N/autopa">autopa</a><p>The load cell pressure advance sweep.</p></li>
+        <li><a href="https://github.com/TheSpaghettiDetective/obico-server">Obico</a><p>The spaghetti detector and its alert rules.</p></li>
+        <li><a href="https://github.com/SoftFever/OrcaSlicer">OrcaSlicer</a><p>The slicer, with q2-offload's presets and plugin.</p></li>
+        <li><a href="https://github.com/spuder/OpenSpool">OpenSpool</a><p>The open NFC tag format for spools.</p></li>
+        <li><a href="https://github.com/caronc/apprise">Apprise</a><p>Notifications to your phone, Telegram, Discord or Home Assistant.</p></li>
+      </ul>
+      <p class="thanks">And the Q2 community work it started from: MisterSheikh's Klipper patches for the Q2 MCUs, n3oney's Katapult deployers that make the conversion possible without an ST-Link, the serial-over-network design of endeavour and theboleslaw, and Qidi's own published configuration.</p>
+    </div>
+  </section>
+
+  <section class="arch">
+    <div class="wrap">
+      <h2 class="section-title">Two machines, one printer</h2>
+      <p class="section-lede">Klipper needs more than the printer's board can give. q2-offload moves the heavy work to a computer on your network and leaves the board the jobs it's good at.</p>
+      <div class="arch-grid">
+        <div class="machine">
+          <h3>Your Klipper host</h3>
+          <p class="what">Debian or Ubuntu, x86_64 or arm64</p>
+          <ul><li>Klipper</li><li>Moonraker</li><li>Happy Hare</li><li>Spoolman</li><li>Mainsail</li><li>Fluidd</li><li>autopa</li><li>Failure detection</li></ul>
+        </div>
+        <div class="link" aria-label="Network links">
+          <div>three MCU links</div>
+          <div>touchscreen</div>
+          <div>camera</div>
+        </div>
+        <div class="machine">
+          <h3>The Q2's board</h3>
+          <p class="what">Forwards the serial links over the LAN</p>
+          <ul><li>Mainboard link</li><li>Toolhead link</li><li>Qidi Box link</li><li>HelixScreen</li><li>Webcam</li></ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="install" id="install">
+    <div class="wrap">
+      <h2 class="section-title">Install</h2>
+      <p class="section-lede">On the Klipper host, as your normal user. The installer shows a menu of the optional components and asks before each step that touches the printer.</p>
+      <div class="install-grid">
+        <div class="code">
+          <button class="copy" type="button" id="copy">Copy</button>
+<pre id="cmd">git clone https://github.com/cedbossneo/q2-offload.git ~/q2-offload
+cd ~/q2-offload
+<span class="c"># latest stable version</span>
+git checkout "$(git tag -l 'v*' --sort=-creatordate | grep -v -- -beta | head -1)"
+./install.sh --printer 192.168.1.50</pre>
+        </div>
+        <div class="needs">
+          <h3>What you need</h3>
+          <ul>
+            <li>A Qidi Q2 with one Qidi Box, on the stock Qidi OS, reachable over SSH. Or no Box, with <code>--no-box</code>.</li>
+            <li>A host on Debian 12 or 13, or Ubuntu 22.04, 24.04 or 26.04 LTS, x86_64 or arm64. CI installs on each of them.</li>
+            <li>Both on the same network, wired if possible.</li>
+          </ul>
+          <a class="btn ghost" href="docs/">Read the install guide</a>
+        </div>
+      </div>
+      <div class="caution">
+        <h3>Read this before you start</h3>
+        <p>It replaces Qidi's firmware on three microcontrollers. The first conversion replaces Qidi's bootloader with Katapult: a power cut during that step, or a wrong image, can only be recovered with an ST-Link. Converting from stock firmware 01.01.02 or newer isn't tested yet. Read <a href="docs/start/before-you-start/">Before you start</a> first. No warranty: you do this at your own risk.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>q2-offload is free software under GPL-3.0. Not affiliated with Qidi.</span>
+    <a href="https://github.com/cedbossneo/q2-offload">github.com/cedbossneo/q2-offload</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('copy').addEventListener('click', async (e) => {
+    try {
+      await navigator.clipboard.writeText(document.getElementById('cmd').innerText);
+      e.target.textContent = 'Copied';
+    } catch {
+      e.target.textContent = 'Select and copy';
+    }
+    setTimeout(() => { e.target.textContent = 'Copy'; }, 2000);
+  });
+</script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module" src="scene.js"></script>
+</body>
+</html>

@@ -10,6 +10,7 @@
 #   ./install.sh flash           reflash the MCUs, then bring Klipper to the same version
 #   ./install.sh status          show what is installed and running
 #   ./install.sh check           check that every installed service answers
+#   ./install.sh calibrate       check the load cell (three taps), then offer PID and input shaper
 #
 # Options:
 #   --printer <ip>               printer IP address (asked otherwise)
@@ -58,7 +59,7 @@ usage() { sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 command="install"
 case "${1:-}" in
-    install|update|host|printer|flash|status|check|_update-check|_update-user) command="$1"; shift ;;
+    install|update|host|printer|flash|status|check|calibrate|_update-check|_update-user) command="$1"; shift ;;
     -h|--help) usage ;;
 esac
 while [ $# -gt 0 ]; do
@@ -153,7 +154,7 @@ COMPONENT_HELP=(
     "mainsail|Mainsail web interface (port ${MAINSAIL_PORT})"
     "fluidd|Fluidd web interface (port ${FLUIDD_PORT})"
     "spoolman|Spoolman spool inventory, filled by the Box NFC tags (Docker, port 7912)"
-    "autopa|autopa: pressure advance calibration with the printer camera"
+    "autopa|autopa: pressure advance calibration with the load cell"
     "detect|Failure detection: Obico's detector watches the camera, pauses failing prints (Docker, 1 GB disk)"
 )
 
@@ -247,7 +248,7 @@ This will:
   1. install Klipper, Moonraker, Happy Hare and the selected components on THIS machine
   2. convert the printer board into a serial proxy (its own Klipper/Moonraker stop)
   3. flash the mainboard, toolhead$(has_box && echo ' and Qidi Box') MCUs
-Read README.md (warnings) first. A backup of the printer config is made before step 2.
+Read https://cedbossneo.github.io/q2-offload/docs/start/before-you-start/ first. A backup of the printer config is made before step 2.
 EOF
     confirm "Continue?" n || exit 0
     # Box present or not decides the whole host setup: checked before anything is installed
@@ -271,7 +272,7 @@ EOF
     host_ui_defaults
     printer_helixscreen
     if klipper_ready; then
-        calibrate_load_cell_tare || true
+        load_cell_check || true
         calibrate_offer
     fi
     local healthy=0
@@ -417,7 +418,7 @@ final_notes() {
     has detect && echo "  Detection   $(web_url "$(web_port)")/detect/"
     cat <<EOF
 
-Next: calibrate this machine (load cell, PID, input shaper$(has_box && echo ', Box gears')): docs/calibration.md
+Next: the calibrations left to do (bed$(has_box && echo ', Box')): https://cedbossneo.github.io/q2-offload/docs/install/calibrate/
 Update later from the update manager in Mainsail/Fluidd, or with ./install.sh update
 EOF
 }
@@ -433,4 +434,7 @@ case "$command" in
         host_klipper; proot proxies-start; host_start ;;
     status) do_status ;;
     check) [ -f "$SETTINGS" ] || die "not installed yet"; verify_install ;;
+    calibrate) [ -f "$SETTINGS" ] || die "not installed yet"
+        printing && die "a print is running"; klipper_ready || die "Klipper is not ready"
+        load_cell_check || true; calibrate_offer ;;
 esac

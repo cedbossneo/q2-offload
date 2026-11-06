@@ -38,6 +38,26 @@ jobs:
       - name: pages
         run: node --test tests/web/*.test.mjs
 
+  site:
+    # The documentation and project page build, and no link in them is broken
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: site
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: Build
+        run: npm ci --no-audit --no-fund && npm run build
+      - name: Links
+        run: python3 scripts/check-links.py
+
   detect:
     # The q2-detect service with Obico's ML API image pinned in VERSIONS, as the installer
     # pulls it, against a fake Moonraker and camera

@@ -60,7 +60,7 @@
     "printer_extruder_variant": [
         "Direct Drive Standard"
     ],
-    "printer_notes": "q2-offload: mainline Klipper + Happy Hare (Qidi Box, 4 gates). See docs/orca-slicer.md. Set the physical printer host to your Klipper host.",
+    "printer_notes": "q2-offload: mainline Klipper + Happy Hare (Qidi Box, 4 gates). See https://cedbossneo.github.io/q2-offload/docs/install/slicer/ Set the physical printer host to your Klipper host.",
     "printer_settings_id": "Q2 Offload 0.4 nozzle",
     "purge_in_prime_tower": "0",
     "retract_length_toolchange": [
