@@ -12,235 +12,22 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700&family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,300..800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-<style>
-:root {
-  --ink: #141836;
-  --ink-2: #1c2150;
-  --ink-3: #262c66;
-  --line: #363e80;
-  --text: #eef0fa;
-  --muted: #a6acd4;
-  --pei: #d4b06a;
-  --pei-deep: #a9843c;
-  --green: #34c17b;
-  --yellow: #f4c63d;
-  --red: #ef5a4c;
-  --blue: #4c8df6;
-  --radius-lg: 22px;
-  --radius-sm: 10px;
-  --display: "Bricolage Grotesque", "Avenir Next Condensed", system-ui, sans-serif;
-  --body: "Hanken Grotesk", system-ui, sans-serif;
-  --mono: "JetBrains Mono", ui-monospace, monospace;
-}
-* { box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body {
-  margin: 0;
-  background: var(--ink);
-  color: var(--text);
-  font: 400 1.0625rem/1.6 var(--body);
-  -webkit-font-smoothing: antialiased;
-}
-a { color: var(--pei); }
-a:focus-visible, button:focus-visible { outline: 3px solid var(--pei); outline-offset: 3px; border-radius: 6px; }
-h1, h2, h3 { font-family: var(--display); font-variation-settings: "wdth" 80; line-height: 1.02; margin: 0; letter-spacing: -0.01em; }
-p { margin: 0; }
-code { font: 0.88em var(--mono); color: #dfe3ff; }
-
-/* Top bar */
-.bar {
-  position: fixed; inset: 0 0 auto 0; z-index: 20;
-  display: flex; align-items: center; gap: 1.5rem;
-  padding: 0.9rem clamp(1rem, 4vw, 2.5rem);
-  background: linear-gradient(var(--ink) 30%, rgba(20, 24, 54, 0));
-}
-.brand { display: flex; align-items: center; gap: 0.6rem; color: var(--text); text-decoration: none; font: 700 1.15rem var(--display); font-variation-settings: "wdth" 85; }
-.brand svg { width: 26px; height: 26px; }
-.bar nav { margin-left: auto; display: flex; gap: 1.4rem; }
-.bar nav a { color: var(--muted); text-decoration: none; font-size: 0.95rem; }
-.bar nav a:hover { color: var(--text); }
-.bar nav .gh { color: var(--text); }
-
-/* Story: sticky 3D stage with panels scrolling over it */
-.story { position: relative; }
-.stage {
-  position: sticky; top: 0; height: 100vh; height: 100svh; overflow: hidden;
-  background:
-    radial-gradient(70% 60% at 68% 45%, #2a3178 0%, rgba(42, 49, 120, 0) 70%),
-    radial-gradient(50% 40% at 20% 90%, #1f255c 0%, rgba(31, 37, 92, 0) 70%),
-    var(--ink);
-}
-.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-.panels { position: relative; margin-top: -100vh; margin-top: -100svh; pointer-events: none; }
-.panel {
-  height: 100vh; height: 100svh;
-  display: flex; align-items: center;
-  padding: 0 clamp(1rem, 5vw, 4.5rem);
-}
-.panel.tail { height: 70vh; }
-.panel-card {
-  pointer-events: auto;
-  width: min(30rem, 100%);
-  padding: 1.6rem 1.7rem 1.7rem;
-  border-radius: var(--radius-lg);
-  background: rgba(20, 24, 54, 0.74);
-  border: 1px solid rgba(80, 90, 170, 0.45);
-  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-}
-.step-no {
-  display: inline-grid; place-items: center;
-  width: 2.1rem; height: 2.1rem; border-radius: 50%;
-  margin-bottom: 1rem;
-  font: 700 1rem var(--display);
-  color: var(--ink); background: var(--c, var(--pei));
-}
-.panel h2 { font-size: clamp(2rem, 3.6vw, 3rem); font-weight: 700; margin-bottom: 0.8rem; }
-.panel p + p { margin-top: 0.7rem; }
-.panel .under { color: var(--muted); font-size: 0.93rem; }
-
-/* Hero panel */
-.hero .panel-card { background: none; border: 0; backdrop-filter: none; -webkit-backdrop-filter: none; padding: 0; width: min(38rem, 100%); }
-.hero h1 { font-size: clamp(3rem, 7.2vw, 6.4rem); font-weight: 800; font-variation-settings: "wdth" 75; line-height: 0.92; margin-bottom: 1.4rem; }
-.hero .lede { font-size: 1.2rem; color: #d7dbf4; max-width: 31rem; }
-.actions { display: flex; flex-wrap: wrap; gap: 0.8rem; margin-top: 2rem; }
-.btn {
-  display: inline-flex; align-items: center; gap: 0.5rem;
-  padding: 0.85rem 1.3rem; border-radius: 999px;
-  font: 700 1rem var(--body); text-decoration: none; cursor: pointer; border: 0;
-}
-.btn.primary { background: var(--pei); color: #1b1606; }
-.btn.primary:hover { background: #e2c07c; }
-.btn.ghost { color: var(--text); background: rgba(255, 255, 255, 0.06); box-shadow: inset 0 0 0 1px var(--line); }
-.btn.ghost:hover { background: rgba(255, 255, 255, 0.1); }
-.scroll-hint { margin-top: 3rem; color: var(--muted); font-size: 0.9rem; display: flex; align-items: center; gap: 0.6rem; }
-.scroll-hint span { width: 1px; height: 2.4rem; background: linear-gradient(var(--pei), rgba(212, 176, 106, 0)); }
-
-/* Overlays drawn over the scene: what the printer shows at each step */
-.overlay { position: absolute; right: clamp(1rem, 3vw, 2.5rem); bottom: clamp(1rem, 5vh, 3rem); width: min(22rem, calc(100% - 2rem)); pointer-events: none; }
-.ov {
-  position: absolute; right: 0; bottom: 0; width: 100%;
-  opacity: 0; transform: translateY(14px) scale(0.98);
-  transition: opacity 0.35s ease, transform 0.35s ease;
-  border-radius: 16px;
-  background: rgba(13, 16, 38, 0.92);
-  border: 1px solid var(--line);
-  box-shadow: 0 24px 60px rgba(5, 6, 20, 0.55);
-  padding: 1.1rem 1.2rem 1.2rem;
-  font-size: 0.92rem;
-}
-.ov.on { opacity: 1; transform: none; }
-.ov-head { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.8rem; font: 700 1rem var(--display); font-variation-settings: "wdth" 90; }
-.ov-head small { margin-left: auto; color: var(--muted); font: 400 0.8rem var(--body); }
-.swatch { width: 0.85rem; height: 0.85rem; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px rgba(52, 193, 123, 0.2); flex: none; }
-.rec { display: grid; grid-template-columns: auto 1fr; gap: 0.35rem 1rem; margin: 0; }
-.rec dt { color: var(--muted); }
-.rec dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
-.rec .src { color: var(--pei); font-size: 0.78rem; }
-.ov .note { margin-top: 0.8rem; color: var(--muted); font-size: 0.78rem; }
-.dialog-q { margin-bottom: 1rem; }
-.dialog-btns { display: grid; gap: 0.5rem; }
-.dialog-btns span { display: block; text-align: center; padding: 0.6rem; border-radius: 10px; background: var(--ink-3); transition: background 0.25s, color 0.25s, transform 0.25s; }
-.dialog-btns .main.pressed { background: var(--pei); color: #1b1606; transform: scale(0.97); }
-.chart svg { width: 100%; height: auto; display: block; }
-.chart .axis { stroke: var(--line); stroke-width: 1; }
-.chart .curve { fill: none; stroke: var(--green); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
-.chart .dot { fill: var(--green); }
-.chart .best { fill: var(--pei); opacity: 0; transition: opacity 0.3s; }
-.chart .best-label { fill: var(--pei); font: 700 13px var(--body); opacity: 0; transition: opacity 0.3s; }
-.chart.done .best, .chart.done .best-label { opacity: 1; }
-.chart text { fill: var(--muted); font: 11px var(--body); }
-.chart-steps { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-top: 0.7rem; }
-.chart-steps span { font-size: 0.75rem; padding: 0.15rem 0.55rem; border-radius: 999px; background: var(--ink-3); color: var(--muted); transition: background 0.25s, color 0.25s; }
-.chart-steps span.lit { background: rgba(52, 193, 123, 0.2); color: #bff0d5; }
-.toast { display: flex; gap: 0.7rem; align-items: flex-start; padding-bottom: 0.9rem; margin-bottom: 0.9rem; border-bottom: 1px solid var(--line); }
-.toast svg { flex: none; width: 1.4rem; height: 1.4rem; }
-.preset { display: grid; grid-template-columns: auto 1fr auto; gap: 0.6rem; align-items: center; }
-.preset b { font-weight: 700; }
-.preset .k { color: var(--pei); font-variant-numeric: tabular-nums; }
-.meter { height: 6px; border-radius: 3px; background: var(--ink-3); overflow: hidden; margin-top: 0.7rem; }
-.meter i { display: block; height: 100%; width: 0%; background: var(--green); }
-
-.no-webgl .stage canvas { display: none; }
-
-/* Sections after the story */
-main > section { position: relative; padding: clamp(4rem, 10vw, 8rem) clamp(1rem, 5vw, 4.5rem); }
-.wrap { max-width: 72rem; margin: 0 auto; }
-.section-title { font-size: clamp(2.2rem, 4.5vw, 3.6rem); font-weight: 750; max-width: 18ch; margin-bottom: 1.2rem; }
-.section-lede { color: var(--muted); max-width: 40rem; font-size: 1.1rem; }
-
-.features { background: linear-gradient(var(--ink), #171c45); }
-.feature-list { list-style: none; padding: 0; margin: 3rem 0 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr)); gap: 2.4rem 3rem; }
-.feature-list li { padding-left: 1.4rem; border-left: 3px solid var(--c); }
-.feature-list h3 { font-size: 1.45rem; font-weight: 700; font-variation-settings: "wdth" 88; margin-bottom: 0.45rem; }
-.feature-list p { color: var(--muted); }
-.shot { margin: 4rem 0 0; display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 2.5rem; align-items: center; }
-.shot img { width: 100%; height: auto; border-radius: var(--radius-lg); border: 1px solid var(--line); display: block; }
-.shot figcaption h3 { font-size: 1.8rem; margin-bottom: 0.6rem; }
-.shot figcaption p { color: var(--muted); }
-
-.arch { background: #171c45; }
-.arch-grid { margin-top: 3rem; display: grid; grid-template-columns: 1fr auto 1fr; gap: 1.5rem; align-items: stretch; }
-.machine { border-radius: var(--radius-lg); padding: 1.6rem; background: var(--ink-2); border: 1px solid var(--line); }
-.machine h3 { font-size: 1.5rem; margin-bottom: 0.3rem; }
-.machine .what { color: var(--muted); margin-bottom: 1.1rem; font-size: 0.95rem; }
-.machine ul { margin: 0; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 0.45rem; }
-.machine li { padding: 0.3rem 0.75rem; border-radius: 999px; background: var(--ink-3); font-size: 0.92rem; }
-.link { display: flex; flex-direction: column; justify-content: center; gap: 0.6rem; min-width: 11rem; }
-.link div { display: flex; align-items: center; gap: 0.6rem; font-size: 0.85rem; color: var(--muted); }
-.link div::before { content: ""; flex: 1; height: 2px; background: repeating-linear-gradient(90deg, var(--pei) 0 8px, transparent 8px 14px); background-size: 28px 2px; animation: flow 1.2s linear infinite; }
-@keyframes flow { to { background-position: 28px 0; } }
-
-.install { background: linear-gradient(#171c45, var(--ink)); }
-.install-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2.5rem; margin-top: 3rem; max-width: 52rem; }
-.code { position: relative; border-radius: var(--radius-lg); background: #0e1130; border: 1px solid var(--line); padding: 3rem 1.4rem 1.4rem; overflow-x: auto; }
-.code pre { margin: 0; font: 400 0.9rem/1.75 var(--mono); color: #dfe3ff; white-space: pre; }
-.code .c { color: #7d84b8; }
-.copy { position: absolute; top: 0.8rem; right: 0.8rem; font: 600 0.8rem var(--body); color: var(--text); background: var(--ink-3); border: 0; border-radius: 8px; padding: 0.4rem 0.7rem; cursor: pointer; }
-.needs h3 { font-size: 1.4rem; margin-bottom: 0.8rem; }
-.needs ul { margin: 0 0 1.6rem; padding-left: 1.1rem; color: #d7dbf4; }
-.needs li + li { margin-top: 0.4rem; }
-.caution { margin-top: 3rem; border-radius: var(--radius-lg); padding: 1.4rem 1.6rem; background: rgba(239, 90, 76, 0.08); border: 1px solid rgba(239, 90, 76, 0.45); max-width: 52rem; }
-.caution h3 { font-size: 1.3rem; color: #ffb3aa; margin-bottom: 0.5rem; }
-.caution p { color: #f1d5d2; }
-
-footer { padding: 3rem clamp(1rem, 5vw, 4.5rem) 4rem; color: var(--muted); font-size: 0.92rem; border-top: 1px solid var(--line); }
-footer .wrap { display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: space-between; }
-
-@media (max-width: 820px) {
-  .bar nav a:not(.gh) { display: none; }
-  .panel { align-items: flex-end; padding-bottom: 1.2rem; }
-  .panel-card { padding: 1.2rem 1.3rem 1.3rem; }
-  .panel h2 { font-size: 1.75rem; }
-  .panel p { font-size: 0.98rem; }
-  .panel .under { display: none; }
-  .hero { align-items: flex-end; padding-bottom: 2.5rem; }
-  .hero .lede { font-size: 1.05rem; }
-  .scroll-hint { display: none; }
-  .overlay { top: 4.2rem; bottom: auto; right: 1rem; }
-  .ov { top: 0; bottom: auto; font-size: 0.85rem; padding: 0.9rem 1rem; }
-  .ov .note { display: none; }
-  .chart svg { max-height: 120px; }
-  .chart-steps { display: none; }
-  .shot, .install-grid, .arch-grid { grid-template-columns: 1fr; }
-  .link { flex-direction: row; min-width: 0; }
-  .link div { flex: 1; }
-}
-@media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
-  .ov { transition: none; }
-  .link div::before { animation: none; }
-}
-</style>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
+<nav class="chapters" aria-label="Chapters">
+  <a href="#ch-setup" data-p="1" style="--c: var(--pei)">Set up</a>
+  <a href="#ch-spool" data-p="6" style="--c: var(--green)">A new spool</a>
+  <a href="#ch-daily" data-p="15" style="--c: var(--blue)">Every day</a>
+</nav>
 <header class="bar">
   <a class="brand" href="#top" aria-label="q2-offload home">
     <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="27" fill="none" stroke="#d4b06a" stroke-width="6"/><circle cx="32" cy="32" r="15" fill="#34c17b"/><circle cx="32" cy="32" r="5.5" fill="#141836"/></svg>
     q2-offload
   </a>
   <nav aria-label="Sections">
-    <a href="#story">How a spool goes in</a>
-    <a href="#features">Features</a>
+    <a href="#ch-setup">How it works</a>
+    <a href="#made">What's in it</a>
     <a href="#install">Install</a>
     <a class="gh" href="https://github.com/cedbossneo/q2-offload">GitHub</a>
   </nav>
@@ -249,8 +36,38 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: 
 <div class="story" id="top">
   <div class="stage" aria-hidden="true">
     <canvas id="scene"></canvas>
+    <span class="chip-label">Mainboard MCU</span>
+    <span class="chip-label">Toolhead MCU</span>
+    <span class="chip-label">Qidi Box MCU</span>
     <div class="overlay">
-      <div class="ov" data-from="4.55" data-to="5.45">
+      <div class="ov term" data-from="1.25" data-to="4.85">
+        <div class="dots"><i></i><i></i><i></i></div>
+        <p class="cmd" data-at="1.3">$ ./install.sh --printer 192.168.1.50</p>
+        <p data-at="1.5"><span class="muted">components</span> Mainsail Fluidd Spoolman autopa detect</p>
+        <p data-at="1.8"><span class="ok">✓</span> Klipper, Moonraker, Happy Hare on the host</p>
+        <p data-at="2.25"><span class="ok">✓</span> printer config backed up</p>
+        <p data-at="2.55"><span class="ok">✓</span> Katapult on the mainboard</p>
+        <p data-at="2.75"><span class="ok">✓</span> Katapult on the toolhead</p>
+        <p data-at="2.95"><span class="ok">✓</span> Katapult on the Qidi Box</p>
+        <p data-at="3.3"><span class="ok">✓</span> application offsets checked</p>
+        <p data-at="3.95"><span class="ok">✓</span> Klipper flashed on the three MCUs</p>
+        <p data-at="4.35"><span class="ok">✓</span> printer board: serial bridge on 7001-7003</p>
+        <p data-at="4.5"><span class="ok">✓</span> HelixScreen installed, pointed at the host</p>
+        <p data-at="4.65"><span class="muted">done, open http://&lt;host&gt;/</span></p>
+      </div>
+
+      <div class="ov" data-from="4.85" data-to="5.45">
+        <div class="ov-head">Network links<small>printer board</small></div>
+        <dl class="rec">
+          <dt>Mainboard MCU</dt><dd>port 7001</dd>
+          <dt>Toolhead MCU</dt><dd>port 7002</dd>
+          <dt>Qidi Box MCU</dt><dd>port 7003</dd>
+          <dt>Touchscreen</dt><dd>to the host, 7125</dd>
+          <dt>Camera</dt><dd>/webcam/</dd>
+        </dl>
+      </div>
+
+      <div class="ov" data-from="9.55" data-to="10.45">
         <div class="ov-head"><span class="swatch"></span>Spool 22 created<small>Spoolman</small></div>
         <dl class="rec">
           <dt>Filament</dt><dd>Sunlu PETG Green</dd>
@@ -262,7 +79,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: 
         </dl>
         <p class="note">Example values. The tag gives brand, material and colour; the manufacturer data comes from SpoolmanDB.</p>
       </div>
-      <div class="ov" data-from="5.55" data-to="6.45">
+      <div class="ov" data-from="10.55" data-to="11.45">
         <div class="ov-head">New filament<small>Touchscreen</small></div>
         <p class="dialog-q">Sunlu PETG Green has no pressure advance yet. Measure it with the load cell?</p>
         <div class="dialog-btns">
@@ -271,7 +88,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: 
           <span>Skip</span>
         </div>
       </div>
-      <div class="ov chart" id="chart" data-from="6.5" data-to="7.5">
+      <div class="ov chart" id="chart" data-from="11.5" data-to="12.5">
         <div class="ov-head"><span class="swatch"></span>Measuring pressure advance<small>autopa</small></div>
         <svg viewBox="0 0 320 170" role="img" aria-label="Pressure error for each pressure advance value tried, lowest at 0.042">
           <line class="axis" x1="36" y1="140" x2="310" y2="140"/>
@@ -283,9 +100,9 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: 
           <circle class="best" id="best" r="6"/>
           <text class="best-label" id="best-label">K 0.042</text>
         </svg>
-        <div class="chart-steps"><span data-at="6.55">255 °C</span><span data-at="6.6">flow 0.95</span><span data-at="6.75">sweep 0.02 to 0.12</span><span data-at="7.35">wipe nozzle</span></div>
+        <div class="chart-steps"><span data-at="11.55">255 °C</span><span data-at="11.6">flow 0.95</span><span data-at="11.75">sweep 0.02 to 0.12</span><span data-at="12.35">wipe nozzle</span></div>
       </div>
-      <div class="ov" data-from="7.6" data-to="8.55">
+      <div class="ov" data-from="12.6" data-to="13.55">
         <div class="toast">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#34c17b"/><path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#0d1026" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
           <div><b>Pressure advance saved</b><br>Sunlu Green: pressure advance 0.042 saved in Spoolman. OrcaSlicer presets follow within a minute.</div>
@@ -293,10 +110,49 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: 
         <div class="preset"><span class="swatch"></span><b>Sunlu PETG Green</b><span class="k">PA 0.042</span></div>
         <p class="note">The next spool of this filament reuses the value: no second calibration.</p>
       </div>
-      <div class="ov" data-from="8.65" data-to="99">
+      <div class="ov" data-from="13.65" data-to="14.45">
         <div class="ov-head"><span class="swatch"></span>Printing<small id="layer">layer 0 of 210</small></div>
         <p>Gate 1, Sunlu PETG Green, with its own preset and pressure advance.</p>
         <div class="meter"><i id="meter"></i></div>
+      </div>
+
+      <div class="ov" data-from="14.5" data-to="15.25">
+        <div class="ov-head">Drying at 45 °C<small>Box page</small></div>
+        <div class="dry-grid">
+          <div><small>Time left</small><span id="dry-left">4 h 52 min left</span></div>
+          <div><small>Humidity</small><span class="big" id="dry-hum">41 %</span></div>
+        </div>
+        <div class="meter heat"><i id="dry-meter"></i></div>
+        <p class="note">PLA is loaded next to the PETG, so the lowest temperature wins. Keep-dry starts a new cycle when the humidity goes above 35 %.</p>
+      </div>
+      <div class="ov" data-from="15.3" data-to="16.4">
+        <div class="ov-head">Gates<small>Happy Hare</small></div>
+        <div class="gatemap">
+          <div><span class="g">0</span><span class="swatch" style="background: var(--yellow); box-shadow: none"></span><span>PLA Yellow</span><span class="st">ready</span></div>
+          <div id="gr-1"><span class="g">1</span><span class="swatch" style="box-shadow: none"></span><span>PETG Green</span><span class="st" id="gs-1">in extruder</span></div>
+          <div id="gr-2"><span class="g">2</span><span class="swatch" style="background: var(--red); box-shadow: none"></span><span>PETG Red</span><span class="st" id="gs-2">ready</span></div>
+          <div><span class="g">3</span><span class="swatch" style="background: var(--blue); box-shadow: none"></span><span>PLA Blue</span><span class="st">ready</span></div>
+        </div>
+        <p class="note">If a load fails, the touchscreen offers to retry or recover it.</p>
+      </div>
+      <div class="ov" data-from="16.45" data-to="17.0">
+        <div class="ov-head">On the touchscreen<small>HelixScreen</small></div>
+        <ul class="helix-list">
+          <li>Temperatures and print progress</li>
+          <li>Each gate of the Box, and its drying</li>
+          <li>The calibration and load dialogs</li>
+        </ul>
+      </div>
+      <div class="ov" id="detect" data-from="17.05" data-to="99">
+        <div class="ov-head">Failure detection<small>Obico detector</small></div>
+        <svg viewBox="0 0 320 160" role="img" aria-label="Failure score over the print, rising above the warning and pause levels">
+          <line class="axis" x1="20" y1="140" x2="310" y2="140"/>
+          <line class="lvl w" x1="20" y1="80" x2="310" y2="80"/><text class="tw" x="24" y="74">warning</text>
+          <line class="lvl p" x1="20" y1="40" x2="310" y2="40"/><text class="tp" x="24" y="34">pause</text>
+          <polyline id="det-curve" points=""/>
+        </svg>
+        <p class="verdict"><span class="v-quiet">Watching: a frame every 10 s</span><span class="v-warn">Warning sent to your phone</span><span class="v-pause">Print paused, picture sent to your phone</span></p>
+        <p class="note">Pausing needs pause mode. The default, observe mode, only notifies.</p>
       </div>
     </div>
   </div>
@@ -308,20 +164,58 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: 
         <p class="lede">Mainline Klipper, Happy Hare and Spoolman run on a computer next to your printer. Tag a spool, put it in the Box, and the printer takes it from there.</p>
         <div class="actions">
           <a class="btn primary" href="#install">Install</a>
-          <a class="btn ghost" href="#step-1">Follow a spool</a>
+          <a class="btn ghost" href="#ch-setup">See how it works</a>
         </div>
-        <p class="scroll-hint"><span></span>Scroll to follow a new spool from the bag to the first layer</p>
+        <p class="scroll-hint"><span></span>Scroll: setting it up, a new spool, and every day</p>
       </div>
     </section>
 
-    <section class="panel" id="step-1">
+    <section class="panel" id="ch-setup">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--pei)">1</span>
+        <h2>A computer next to the printer</h2>
+        <p>A mini PC, a NAS or a Raspberry Pi 4/5 on Debian or Ubuntu, wired to the same network as the printer. That's where Klipper will run.</p>
+        <p class="under">Debian 12 and 13, Ubuntu 22.04, 24.04 and 26.04, x86_64 and arm64: CI installs on each of them.</p>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--pei)">2</span>
+        <h2>One installer</h2>
+        <p>It installs Klipper, Moonraker, Happy Hare and the components you pick from its menu, then asks before every step that touches the printer.</p>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--pei)">3</span>
+        <h2>Katapult, without an ST&#8209;Link</h2>
+        <p>After a backup of the printer config, Qidi's own update scripts put the Katapult bootloader on the mainboard, the toolhead and the Box.</p>
+        <p class="under">This first conversion is the one risky step: a power cut during it can only be recovered with an ST&#8209;Link.</p>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--pei)">4</span>
+        <h2>Klipper on all three MCUs</h2>
+        <p>It checks each MCU's application offset before writing, then flashes Klipper through Katapult. Later updates reflash the same way, after a typed confirmation.</p>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--pei)">5</span>
+        <h2>The printer's board becomes a bridge</h2>
+        <p>Its stock Klipper and screen are stopped. It forwards the three MCU links over the network, and runs HelixScreen on the touchscreen, connected to the host.</p>
+        <p class="under">If the printer or the host restarts, a watchdog reconnects Klipper on its own.</p>
+      </div>
+    </section>
+
+    <section class="panel" id="ch-spool">
       <div class="panel-card">
         <span class="step-no" style="--c: var(--green)">1</span>
         <h2>A new spool</h2>
         <p>Any brand. It doesn't need a chip from the manufacturer or a reader of its own.</p>
       </div>
     </section>
-
     <section class="panel">
       <div class="panel-card">
         <span class="step-no" style="--c: var(--green)">2</span>
@@ -330,7 +224,6 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: 
         <p class="under">The tags cost a few cents each and can be rewritten.</p>
       </div>
     </section>
-
     <section class="panel">
       <div class="panel-card">
         <span class="step-no" style="--c: var(--green)">3</span>
@@ -339,7 +232,6 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: 
         <p class="under">Spell brand and material the same way each time, so Spoolman doesn't create duplicates.</p>
       </div>
     </section>
-
     <section class="panel">
       <div class="panel-card">
         <span class="step-no" style="--c: var(--green)">4</span>
@@ -347,7 +239,6 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: 
         <p>Any of the four gates. When the Box preloads the spool, its NFC reader picks up the tag.</p>
       </div>
     </section>
-
     <section class="panel">
       <div class="panel-card">
         <span class="step-no" style="--c: var(--green)">5</span>
@@ -356,7 +247,6 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: 
         <p class="under">Later scans of the same tag select that spool again, in whatever gate you put it.</p>
       </div>
     </section>
-
     <section class="panel">
       <div class="panel-card">
         <span class="step-no" style="--c: var(--green)">6</span>
@@ -364,7 +254,6 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: 
         <p>For a filament it has never measured, the touchscreen offers to calibrate pressure advance now, at the next print that uses it, or not at all.</p>
       </div>
     </section>
-
     <section class="panel">
       <div class="panel-card">
         <span class="step-no" style="--c: var(--green)">7</span>
@@ -373,7 +262,6 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: 
         <p class="under">The sweep is autopa's. Each step shows on the touchscreen, Mainsail and Fluidd.</p>
       </div>
     </section>
-
     <section class="panel">
       <div class="panel-card">
         <span class="step-no" style="--c: var(--green)">8</span>
@@ -381,7 +269,6 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: 
         <p>The value is stored on the filament in Spoolman, and the OrcaSlicer presets pick it up within a minute. Your next spool of the same filament reuses it.</p>
       </div>
     </section>
-
     <section class="panel">
       <div class="panel-card">
         <span class="step-no" style="--c: var(--green)">9</span>
@@ -389,32 +276,85 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 1rem 2rem; justify-content: 
         <p>OrcaSlicer sees what's in each gate and selects the preset of that exact spool. You slice, send, and the printer loads it.</p>
       </div>
     </section>
+
+    <section class="panel" id="ch-daily">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--blue)">1</span>
+        <h2>Dry filament in the Box</h2>
+        <p>Start a cycle from the Box page or the touchscreen: each material has its temperature and time, and the time left shows as it runs. Afterwards, keep-dry watches the humidity.</p>
+        <p class="under">With the spools out, the Box turns each empty gate every 5 minutes so it heats evenly, like the stock firmware.</p>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--blue)">2</span>
+        <h2>Happy Hare runs the Box</h2>
+        <p>It unloads one gate and loads another for a colour change, keeps the gate map in sync with Spoolman, and tracks what is left on each spool.</p>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--blue)">3</span>
+        <h2>HelixScreen on the printer</h2>
+        <p>The touchscreen runs HelixScreen, an open Klipper interface, talking to the host. It shows the Box, the drying, and the dialogs q2-offload opens.</p>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-card">
+        <span class="step-no" style="--c: var(--blue)">4</span>
+        <h2>A camera watches every print</h2>
+        <p>Obico's spaghetti detector looks at a frame every 10 seconds, on your host. It warns you, and can pause the print and send you the picture.</p>
+        <p class="under">Every decision is kept with its picture, so you can see how reliable it is on your printer.</p>
+      </div>
+    </section>
     <div class="panel tail" aria-hidden="true"></div>
   </div>
 </div>
 
 <main>
-  <section class="features" id="features">
+  <section class="made" id="made">
     <div class="wrap">
-      <h2 class="section-title">Everything else is set up too</h2>
-      <p class="section-lede">The installer configures the Q2 and the Box completely. You don't start from an empty <code>printer.cfg</code>.</p>
+      <h2 class="section-title">Made here, for the Q2</h2>
+      <p class="section-lede">The parts that didn't exist anywhere else. All of it is in the repository, and the same installer sets it up.</p>
       <ul class="feature-list">
-        <li style="--c: var(--pei)"><h3>Mainline Klipper</h3><p>Current Klipper and Moonraker on a mini PC, a NAS or a Raspberry Pi 4/5. The printer's own board only forwards the three MCU links, runs the touchscreen and the camera.</p></li>
-        <li style="--c: var(--green)"><h3>Load cell probing</h3><p>Bed probing with the toolhead load cell, and a bed mesh that only covers the part you print.</p></li>
-        <li style="--c: var(--yellow)"><h3>Drying in the Box</h3><p>Drying from the touchscreen, a keep-dry watchdog afterwards, and spool rotation so the filament dries evenly.</p></li>
-        <li style="--c: var(--red)"><h3>Help when a load fails</h3><p>When a spool doesn't load, a dialog on the touchscreen offers to retry or to recover it.</p></li>
-        <li style="--c: var(--blue)"><h3>Power-loss recovery</h3><p>The print state is saved as it goes, so a print stopped by a power cut can resume.</p></li>
-        <li style="--c: var(--pei)"><h3>Failure detection</h3><p>Obico's spaghetti detector watches the camera and can pause a failing print. It runs on your host, not in a cloud.</p></li>
-        <li style="--c: var(--green)"><h3>Updates in one click</h3><p>From the update manager in Mainsail or Fluidd, on the stable channel (tested on a printer) or the latest one.</p></li>
-        <li style="--c: var(--yellow)"><h3>Works without a Box</h3><p>Install with <code>--no-box</code>: the toolhead sensor pauses the print when filament runs out.</p></li>
+        <li style="--c: var(--pei)"><h3>The installer and updates</h3><p>Converts a stock printer, then updates from Mainsail or Fluidd on the stable channel (tested on a printer) or the latest one.</p></li>
+        <li style="--c: var(--pei)"><h3>The network bridge</h3><p>Serial links over TCP to the printer's board, and a watchdog that reconnects Klipper after a restart or a dropped link.</p></li>
+        <li style="--c: var(--green)"><h3>Q2 configuration and Klipper patches</h3><p>Load cell probing, an adaptive bed mesh, purge bucket and chute macros, power-loss recovery, and Klipper patches such as board fan temperature limits and a load cell timing fix.</p></li>
+        <li style="--c: var(--green)"><h3>NFC spools and pressure advance</h3><p>SpoolmanDB data for any brand, and a load cell calibration offered for each new filament, saved in Spoolman.</p></li>
+        <li style="--c: var(--yellow)"><h3>Box drying page</h3><p>Humidity, temperature and loaded spools, a drying cycle with its time left, keep-dry settings, and spool rotation with the spools out.</p></li>
+        <li style="--c: var(--red)"><h3>Failure detection service</h3><p>Runs Obico's detector on your host with its alert rules, a live page, a history of every print, and notifications through Apprise.</p></li>
+        <li style="--c: var(--blue)"><h3>Q2 Spool Presets for OrcaSlicer</h3><p>A Box tab in the slicer, with one preset per Spoolman spool, its flow ratio and pressure advance.</p></li>
+        <li style="--c: var(--blue)"><h3>Happy Hare for the Qidi Box</h3><p>Its configuration for the Box, a retry dialog for failed loads, and patches proposed upstream to Happy Hare.</p></li>
       </ul>
       <figure class="shot">
-        <img src="q2-box-tab.png" alt="The Q2 Box tab in OrcaSlicer, listing the spool loaded in each gate" loading="lazy" width="1600" height="1000">
+        <img src="q2-box-tab.png" alt="The Q2 Box tab in OrcaSlicer, listing the spool loaded in each gate" loading="lazy" width="960" height="640">
         <figcaption>
           <h3>The slicer sees the Box</h3>
-          <p>The Q2 Box tab in OrcaSlicer shows what is loaded in each gate, and selects the preset of that spool, with its own flow ratio and pressure advance.</p>
+          <p>The Q2 Box tab in OrcaSlicer shows what is loaded in each gate, and selects the preset of that spool.</p>
         </figcaption>
       </figure>
+    </div>
+  </section>
+
+  <section class="oss" id="oss">
+    <div class="wrap">
+      <h2 class="section-title">Built on open source</h2>
+      <p class="section-lede">Everything that runs your printer is free software you can read, change and keep.</p>
+      <ul class="oss-list">
+        <li><a href="https://github.com/Klipper3d/klipper">Klipper</a><p>The firmware, running on the host and the three MCUs.</p></li>
+        <li><a href="https://github.com/Arksine/moonraker">Moonraker</a><p>The API that the web interfaces, the touchscreen and the slicer talk to.</p></li>
+        <li><a href="https://github.com/Arksine/katapult">Katapult</a><p>The bootloader that lets the MCUs be reflashed over their links.</p></li>
+        <li><a href="https://github.com/moggieuk/Happy-Hare">Happy Hare</a><p>Runs the Qidi Box: gates, loads, NFC tags, drying.</p></li>
+        <li><a href="https://github.com/Donkie/Spoolman">Spoolman</a><p>Keeps every spool and filament, with SpoolmanDB's manufacturer data.</p></li>
+        <li><a href="https://github.com/prestonbrown/helixscreen">HelixScreen</a><p>The touchscreen interface.</p></li>
+        <li><a href="https://github.com/mainsail-crew/mainsail">Mainsail</a> and <a href="https://github.com/fluidd-core/fluidd">Fluidd</a><p>The web interfaces.</p></li>
+        <li><a href="https://github.com/G0BL1N/autopa">autopa</a><p>The load cell pressure advance sweep.</p></li>
+        <li><a href="https://github.com/TheSpaghettiDetective/obico-server">Obico</a><p>The spaghetti detector and its alert rules.</p></li>
+        <li><a href="https://github.com/SoftFever/OrcaSlicer">OrcaSlicer</a><p>The slicer, with q2-offload's presets and plugin.</p></li>
+        <li><a href="https://github.com/spuder/OpenSpool">OpenSpool</a><p>The open NFC tag format for spools.</p></li>
+        <li><a href="https://github.com/caronc/apprise">Apprise</a><p>Notifications to your phone, Telegram, Discord or Home Assistant.</p></li>
+      </ul>
+      <p class="thanks">And the Q2 community work it started from: MisterSheikh's Klipper patches for the Q2 MCUs, n3oney's Katapult deployers that make the conversion possible without an ST-Link, the serial-over-network design of endeavour and theboleslaw, and Qidi's own published configuration.</p>
     </div>
   </section>
 
