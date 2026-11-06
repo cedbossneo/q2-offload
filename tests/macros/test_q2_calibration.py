@@ -129,7 +129,8 @@ def run(server, name, **kwargs):
 def test_settings_follow_the_preset_the_slicer_prints_with():
     presets = comp.load_presets_module()
     plain = comp.print_settings(spool(temp=250), presets, load)
-    assert plain == {"temperature": 250, "flow_ratio": 0.95, "pressure_advance": None, "material": "PETG"}
+    assert plain == {"temperature": 250, "flow_ratio": 0.95, "pressure_advance": None, "max_flow": None,
+                     "material": "PETG"}
     tuned = comp.print_settings(spool(extra={"orca_filament_flow_ratio": "0.965", "orca_pressure_advance": '"0.04"'}),
                                 presets, load)
     assert tuned["flow_ratio"] == 0.965 and tuned["pressure_advance"] == 0.04
@@ -161,7 +162,7 @@ def test_store_writes_the_filament_and_creates_missing_fields():
     q2, server, http = component([spool()], fields=["orca_filament_flow_ratio"])
     run(server, "q2_pa_store", spool_id=22, pa=0.04512)
     posts = [url.rsplit("/", 1)[1] for method, url, _ in http.requests if method == "POST"]
-    assert posts == ["orca_pressure_advance", "orca_enable_pressure_advance"]
+    assert posts == ["orca_pressure_advance", "orca_enable_pressure_advance", "orca_filament_max_volumetric_speed"]
     patch = [(url, body) for method, url, body in http.requests if method == "PATCH"]
     assert patch == [("http://sm/api/v1/filament/16",
                       {"extra": {"orca_pressure_advance": json.dumps("0.0451"),
@@ -183,6 +184,70 @@ def test_klippy_ready_turns_the_offers_on():
     asyncio.run(server.events["server:klippy_ready"]())
     assert server.components["klippy_apis"].gcode == [
         "SET_GCODE_VARIABLE MACRO=_SPOOL_PA_VARS VARIABLE=enabled VALUE=True"]
+
+
+FLOW_OK = ("...steps...\n" + comp.FLOW_RESULT_PREFIX + json.dumps({
+    "max_flow": 18.8, "recommended": 16.5, "at_least": False, "stop": "force",
+    "message": "the next step could pass 1800 g", "highest_force": 1575}) + "\n")
+
+
+def flow_component(output=FLOW_OK, **extra):
+    q2, server, http = component([spool(**extra)], fields=list(comp.NEW_FIELDS))
+    calls = []
+
+    async def fake_run(temp, status):
+        calls.append((temp, status))
+        return output
+    q2._run_flow_test = fake_run
+    return q2, server, http, calls
+
+
+def test_flow_prepares_the_spool_runs_the_test_and_saves_the_recommended_speed():
+    q2, server, http, calls = flow_component()
+    run(server, "q2_flow_calibrate", spool_id=22, gate=1, then_pa=0)
+    gcode = server.components["klippy_apis"].gcode
+    assert gcode[0] == '_SPOOL_PREPARE SPOOL=22 GATE=1 TEMP=255 TITLE="Max flow" NAME="Sunlu Green 2"'
+    assert calls == [(255, '_SPOOL_PA_STATUS SPOOL=22 TITLE="Max flow" NAME="Sunlu Green 2"')]
+    patch = [(url, body) for method, url, body in http.requests if method == "PATCH"]
+    assert patch == [("http://sm/api/v1/filament/16",
+                      {"extra": {"orca_filament_max_volumetric_speed": json.dumps("16.5")}})]
+    assert "_SPOOL_PA_WIPE TEMP=255\nM104 S0" in gcode
+    assert gcode[-1].startswith('_SPOOL_PA_NOTICE ERROR=0 TITLE="Max flow saved" MSG="Sunlu Green 2: max '
+                                'volumetric speed 16.5 mm3/s saved in Spoolman (max flow 18.8 mm3/s, the force')
+
+
+def test_flow_then_pressure_advance_sweeps_under_the_max():
+    q2, server, http, calls = flow_component()
+    run(server, "q2_flow_calibrate", spool_id=22, gate=1, then_pa=1)
+    gcode = server.components["klippy_apis"].gcode
+    assert gcode[-1] == "SPOOL_PA_CALIBRATE SPOOL=22 VFR=13.2"
+    assert not any(g.startswith(("_SPOOL_PA_NOTICE", "_SPOOL_PA_WIPE")) for g in gcode), gcode
+
+
+def test_a_failed_flow_test_is_shown_and_still_lets_pressure_advance_run():
+    q2, server, http, calls = flow_component(output="Priming\nNo data from the load cell stream.\n")
+    run(server, "q2_flow_calibrate", spool_id=22, gate=1, then_pa=0)
+    gcode = server.components["klippy_apis"].gcode
+    assert not [m for m, *_ in http.requests if m == "PATCH"]
+    assert gcode[-1] == ('_SPOOL_PA_NOTICE ERROR=1 TITLE="Max flow not measured" MSG="Sunlu Green 2: max flow '
+                         'not measured (No data from the load cell stream.)"')
+    q2, server, http, calls = flow_component(output="garbage")
+    run(server, "q2_flow_calibrate", spool_id=22, gate=1, then_pa=1)
+    assert server.components["klippy_apis"].gcode[-1] == "SPOOL_PA_CALIBRATE SPOOL=22"
+
+
+def test_one_flow_test_at_a_time():
+    q2, server, http, calls = flow_component()
+    q2._flow_busy = True
+    run(server, "q2_flow_calibrate", spool_id=22, gate=1, then_pa=0)
+    gcode = server.components["klippy_apis"].gcode
+    assert len(gcode) == 1 and "already running" in gcode[0] and calls == []
+
+
+def test_pressure_advance_flow_after_a_max_flow_test():
+    assert comp.pa_flow(None) is None and comp.pa_flow(0) is None
+    assert comp.pa_flow(16.5) == 13.2 and comp.pa_flow(30) == comp.PA_MAX_VFR
+    assert comp.parse_flow_result("x\n" + comp.FLOW_RESULT_PREFIX + "{bad") is None
 
 
 def test_names_cannot_break_a_gcode_command():
