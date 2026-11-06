@@ -43,6 +43,9 @@ over them (`orca_pressure_advance`, `orca_nozzle_temperature`…). `orca_base_pr
 Orca preset to start from (`SUNLU PETG @System`); the default is the Generic preset of the
 material. Fields must exist in Spoolman (Settings → Extra fields).
 
+Whatever the base, the [multi-material fields](#multi-material-fields) are set to 0 and ramming
+is off, as in the filament templates: the Generic presets leave them to Orca's Prusa MMU defaults.
+
 ## Start G-code
 
 ```
