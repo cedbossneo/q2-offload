@@ -36,7 +36,7 @@ MAINSAIL_CONFIG_REF=ff3869a621db17ce3ef660adbbd3fa321995ac42
 # gcode_shell_command.py (KIAUH extension) used by the power-loss-recovery macros
 KIAUH_REPO=https://github.com/dw-0/kiauh.git
 KIAUH_BRANCH=master
-KIAUH_REF=d3e538de7b3163abe27fdf8116a60716d4db31ce
+KIAUH_REF=485b7bc7bf7627cc528245b6a2a0856e0c1a05f8
 
 MAINSAIL_VERSION=v2.19.0
 FLUIDD_VERSION=v1.37.7
