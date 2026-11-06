@@ -61,7 +61,8 @@ questions: the longest part. It also makes a backup of the printer's configurati
     calibration, but before the first homing the installer makes sure it reacts: when asked,
     **push the nozzle up gently with a finger, three times**, letting go between taps. If it
     doesn't see the three taps it tells you why and offers to try again; nothing homes until
-    the check passes.
+    the check passes. It also records the load cell's reading at rest, and may restart Klipper
+    to apply it.
 
 11. **PID and input shaper.** It offers to measure the heaters (about 10 minutes) and the
     vibrations of the toolhead (about 5 minutes, **bed empty**). Say yes: your printer's own

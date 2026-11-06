@@ -11,8 +11,9 @@ Each `SAVE_CONFIG` writes the result at the bottom of `printer.cfg` and restarts
 
 > [!NOTE]
 > **The load cell needs no calibration**, as on the stock firmware: every Q2 has the same
-> sensor, so the standard values fit all of them. The installer only checks it reacts, with
-> three taps on the nozzle. If you skipped that check, run `./install.sh calibrate`.
+> sensor, so the standard scale fits all of them. The installer checks it reacts, with three
+> taps on the nozzle, and records its reading at rest at the same time. If you skipped that
+> check, run `./install.sh calibrate`.
 
 1. **Heaters.**
 
@@ -66,7 +67,8 @@ Next: [Set up OrcaSlicer](slicer.md).
 |---|---|---|
 | Hotend, bed, chamber PID | Qidi stock | `printer.cfg` |
 | Input shaper | Qidi stock (X 3hump_ei 68.8 Hz, Y mzv 42.2 Hz) | `printer.cfg` |
-| Load cell scale and zero | 206.4 counts/g and -712492, measured on a Q2 | `printer.cfg` |
+| Load cell scale | 206.4 counts/g, measured on a Q2 | `printer.cfg` |
+| Load cell zero | measured during the installer's tap check | `printer.cfg` |
 | Box gear rotation distance | 13.8 mm (Qidi factory) | Happy Hare overrides |
 | Bowden length | 763.2 mm (stock Box tube) | `saved_variables.cfg` |
 
@@ -85,13 +87,15 @@ Klipper uses two values in `[load_cell_probe]`:
 - `reference_tare_counts`, the reading at rest.
 
 q2-offload ships both, measured on a Q2. The probe triggers at 75 g measured from a tare taken
-just before each probe, so the zero doesn't change when it stops. The zero only centres the
-2000 g safety limit, a backup in case the probe never triggers: on a printer whose zero
-differs from ours, that limit moves by as much, and a printer far from it refuses to probe.
+just before each probe, so the zero doesn't change when it stops. The zero centres the 2000 g
+safety limit, a backup in case the probe never triggers.
 
-What matters is that your load cell reacts. Before the first homing, the installer asks you to
-push the nozzle up three times: each tap must read above 150 g, and the reading must come back
-to rest. A dead, inverted or stuck load cell fails the check, and nothing homes until it passes.
+Before the first homing, the installer asks you to push the nozzle up three times: each tap
+must read above 150 g, and the reading must come back to rest. A dead, inverted or stuck load
+cell fails the check, and nothing homes until it passes. Once it passes, the reading taken
+just before the taps, with nothing touching the nozzle, becomes your printer's
+`reference_tare_counts`, so the safety limit is centred on your load cell. A value saved by
+`LOAD_CELL_CALIBRATE` is kept.
 
 To measure your own values anyway (optional), with a known weight:
 

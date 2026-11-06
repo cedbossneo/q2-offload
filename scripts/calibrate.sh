@@ -35,6 +35,51 @@ load_cell_check() {
     done
 }
 
+# The zero shipped in printer.cfg is our printer's. Once the tap check has passed, the tare it
+# took just before the taps (nothing touching the nozzle, and the reading came back to it) is
+# this printer's own: write it as reference_tare_counts, so the force_safety_limit band is
+# centred on this unit. Klipper restarts only when the value changes by more than about 5 g.
+# A zero saved by LOAD_CELL_CALIBRATE (SAVE_CONFIG block) is the user's and is left alone.
+LOAD_CELL_ZERO_TOLERANCE=1000   # counts, about 5 g at 206 counts/g
+
+load_cell_save_zero() {
+    local zero="${1%.*}" current
+    [[ "$zero" =~ ^-?[0-9]+$ ]] || { warn "could not read the load cell zero; keeping the standard one"; return 1; }
+    current="$(status_field load_cell_probe reference_tare_counts)"
+    current="${current%.*}"
+    if [[ "$current" =~ ^-?[0-9]+$ ]] && [ $(( zero > current ? zero - current : current - zero )) -le "$LOAD_CELL_ZERO_TOLERANCE" ]; then
+        return 0
+    fi
+    local changed
+    changed="$(python3 - "${CFG}/printer.cfg" "$zero" <<'PY'
+import re, sys
+path, zero = sys.argv[1], sys.argv[2]
+s = open(path).read()
+body, sep, autosave = s.partition('#*# <---------------------- SAVE_CONFIG')
+if re.search(r'^#\*# \[load_cell_probe\]', autosave, re.M):
+    print('saved'); sys.exit(0)
+m = re.search(r'^\[load_cell_probe\]\n((?:[^\[].*\n|\n)*)', body, re.M)
+if not m:
+    print('missing'); sys.exit(0)
+section = m.group(1)
+if re.search(r'^reference_tare_counts\s*:', section, re.M):
+    section = re.sub(r'^reference_tare_counts\s*:.*$', 'reference_tare_counts: %s' % zero, section, count=1, flags=re.M)
+else:
+    section = re.sub(r'^(counts_per_gram\s*:.*\n)', r'\1reference_tare_counts: %s\n' % zero, section, count=1, flags=re.M)
+open(path, 'w').write(body[:m.start(1)] + section + body[m.end(1):] + sep + autosave)
+print('written')
+PY
+)" || { warn "could not write the load cell zero; keeping the standard one"; return 1; }
+    [ "$changed" = written ] || return 0
+    info "Saving this printer's load cell zero (${zero} counts) and restarting Klipper"
+    sudo systemctl restart klipper
+    sleep 3
+    wait_ready || return 1
+    [ "$(status_field load_cell_probe is_calibrated)" = True ] \
+        || { warn "the load cell is not calibrated after saving its zero: check klippy.log"; return 1; }
+    ok "load cell zero: ${zero} counts"
+}
+
 # Before anything homes Z: the user taps the nozzle three times, and the load cell must see
 # each tap, in the right direction, and come back to zero. A dead, inverted or stuck load
 # cell would let the nozzle drive into the bed at the first homing.
@@ -57,6 +102,8 @@ EOF
     confirm "Ready?" y || return 1
     gcode "LOAD_CELL_TARE" || return 1
     sleep 1
+    local zero
+    zero="$(status_field load_cell_probe tare_counts)"
     info "Tap the nozzle ${LOAD_CELL_TAPS} times now (${LOAD_CELL_TAP_SECONDS} s)"
     local result
     result="$(python3 - "$LOAD_CELL_TAP_SECONDS" "$LOAD_CELL_TAP_G" "$LOAD_CELL_REST_G" "$LOAD_CELL_TAPS" <<'PY'
@@ -98,6 +145,7 @@ PY
     if [ "${result%% *}" = OK ]; then
         ok "load cell saw ${LOAD_CELL_TAPS} taps (up to ${result#OK } g) and returns to zero"
         LOAD_CELL_TESTED=1
+        load_cell_save_zero "$zero" || true
         return 0
     fi
     warn "load cell check failed: ${result}"
