@@ -10,7 +10,7 @@
 #   ./install.sh flash           reflash the MCUs, then bring Klipper to the same version
 #   ./install.sh status          show what is installed and running
 #   ./install.sh check           check that every installed service answers
-#   ./install.sh calibrate       measure the load cell zero, then offer PID and input shaper
+#   ./install.sh calibrate       check the load cell (three taps), then offer PID and input shaper
 #
 # Options:
 #   --printer <ip>               printer IP address (asked otherwise)
@@ -272,7 +272,7 @@ EOF
     host_ui_defaults
     printer_helixscreen
     if klipper_ready; then
-        calibrate_load_cell_tare || true
+        load_cell_check || true
         calibrate_offer
     fi
     local healthy=0
@@ -436,5 +436,5 @@ case "$command" in
     check) [ -f "$SETTINGS" ] || die "not installed yet"; verify_install ;;
     calibrate) [ -f "$SETTINGS" ] || die "not installed yet"
         printing && die "a print is running"; klipper_ready || die "Klipper is not ready"
-        calibrate_load_cell_tare || true; calibrate_offer ;;
+        load_cell_check || true; calibrate_offer ;;
 esac
