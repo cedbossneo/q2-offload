@@ -163,7 +163,7 @@ host_packages() {
     info "Installing system packages"
     sudo apt-get update -qq
     sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${pkgs[@]}" >/dev/null
-    if { has spoolman || has detect; } && ! command -v docker >/dev/null; then
+    if { has spoolman || has detect; } && ! in_ci && ! command -v docker >/dev/null; then
         info "Installing Docker (Spoolman / failure detection)"
         sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker.io >/dev/null
         svc enable --now docker

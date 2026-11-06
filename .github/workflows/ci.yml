@@ -1,8 +1,8 @@
 name: CI
 
 # Build the three MCU firmwares from the pinned Klipper + patches, install the whole host
-# stack on a clean Ubuntu runner, and check that Klipper accepts the configuration against
-# the firmware dictionaries and that Moonraker starts cleanly.
+# stack on each supported Debian/Ubuntu release, and check that Klipper accepts the
+# configuration against the firmware dictionaries and that Moonraker starts cleanly.
 on:
   push:
     branches: [main]
@@ -24,7 +24,7 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.sha }}
       - name: shellcheck
-        run: shellcheck -x -S warning install.sh scripts/*.sh printer/q2-printer.sh config/plr/*.sh tests/*/*.sh
+        run: shellcheck -x -S warning install.sh scripts/*.sh printer/q2-printer.sh config/plr/*.sh tests/*.sh tests/*/*.sh
       - name: python
         run: python3 -m py_compile scripts/*.py
       - name: macros
@@ -126,20 +126,19 @@ jobs:
         run: bash scripts/fetch-hid-flash.sh "$RUNNER_TEMP/hid-flash"
       - name: Simulated flash
         run: |
-          # Both registries rate-limit anonymous pulls from shared runners: retry, alternating
-          img=""
-          for i in 1 2 3 4 5 6; do
-            for c in public.ecr.aws/docker/library/debian:bookworm debian:bookworm; do
-              docker pull -q "$c" >/dev/null 2>&1 && { img="$c"; break 2; }
-            done
-            sleep $((i * 15))
-          done
-          [ -n "$img" ] || { echo "could not pull debian:bookworm"; exit 1; }
+          img="$(tests/pull-image.sh debian:bookworm)"
           docker run --rm -v "$PWD:/repo:ro" "$img" bash /repo/tests/flash-sim/run.sh /repo /repo/dist
 
   host:
+    # The host stack on each supported Debian/Ubuntu release, from its minimal image: catches
+    # a package or Python version that a release lacks
     needs: firmware
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ["debian:12", "debian:13", "ubuntu:22.04", "ubuntu:24.04", "ubuntu:26.04"]
+    name: host (${{ matrix.os }})
     steps:
       - uses: actions/checkout@v4
         with:
@@ -148,19 +147,12 @@ jobs:
         with:
           name: firmware
           path: dist
-      - name: Install the host stack (CI mode)
-        run: ./install.sh host --ci --yes
-      - name: Validate Klipper and Moonraker configuration
-        run: scripts/validate-config.sh dist
-      - name: Re-run the installer (update path must be idempotent)
-        run: ./install.sh host --ci --yes && scripts/validate-config.sh dist
-      - name: Unattended update, user phase (what Moonraker triggers)
-        run: ./install.sh _update-user --unattended --ci && scripts/validate-config.sh dist
-      - name: Logs
-        if: failure()
+      - name: Install, update and validate the host stack
+        env:
+          OS_IMAGE: ${{ matrix.os }}
         run: |
-          tail -100 ~/.config/q2-offload/happy-hare-install.log || true
-          ls -la ~/printer_data/config ~/printer_data/config/mmu/base || true
+          img="$(tests/pull-image.sh "$OS_IMAGE")"
+          docker run --rm -v "$PWD:/repo:ro" "$img" bash /repo/tests/host/run.sh /repo /repo/dist
 
   tag:
     # Every version of main that passes goes to the "latest" update channel (beta tag).
