@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # q2-offload: run Klipper for a Qidi Q2 + Qidi Box on another Linux machine.
 #
-# Run on the Klipper HOST (Debian 12 / Ubuntu 22.04+, x86_64 or arm64), as your normal user:
+# Run on the Klipper HOST (Debian 12/13, Ubuntu 22.04/24.04/26.04, x86_64 or arm64), as your normal user:
 #   ./install.sh                 guided install (host stack, printer conversion, flashing)
 #   ./install.sh update          bring host software and MCU firmware to this repo's VERSIONS
 #                                (asks before flashing; without a flash Klipper is kept)
