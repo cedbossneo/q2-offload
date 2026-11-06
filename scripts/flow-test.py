@@ -375,7 +375,10 @@ def finish(args, watch):
     rest = watch.stream.since(time.time() - 1.0)
     watch.rest = statistics.fmean(b[1] for b in rest) if rest else None
     if not args.keep_hot:
-        gcode("M104 S0")
+        # Like the calibrations: the nozzle wiped on the brush (without the bed mesh), then off.
+        # With --keep-hot the caller goes on and wipes at its end.
+        notify(args, "Wiping the nozzle")
+        gcode("_SPOOL_PA_WIPE TEMP=%d\nM104 S0" % args.temp)
 
 
 def preflight(args):
