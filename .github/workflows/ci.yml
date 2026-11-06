@@ -130,15 +130,17 @@ jobs:
           docker run --rm -v "$PWD:/repo:ro" "$img" bash /repo/tests/flash-sim/run.sh /repo /repo/dist
 
   host:
-    # The host stack on each supported Debian/Ubuntu release, from its minimal image: catches
-    # a package or Python version that a release lacks
+    # The host stack on each supported Debian/Ubuntu release, from its minimal image, on
+    # both supported architectures: catches a package, Python version or wheel that a
+    # release or an architecture lacks
     needs: firmware
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         os: ["debian:12", "debian:13", "ubuntu:22.04", "ubuntu:24.04", "ubuntu:26.04"]
-    name: host (${{ matrix.os }})
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    name: host (${{ matrix.os }}, ${{ matrix.runner == 'ubuntu-24.04-arm' && 'arm64' || 'x86_64' }})
     steps:
       - uses: actions/checkout@v4
         with:

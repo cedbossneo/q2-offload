@@ -44,9 +44,10 @@ slot.
   (`./install.sh --box` switches back). The installer checks for a Box before flashing.
 - A Klipper host running **Debian 12 or 13, or Ubuntu 22.04, 24.04 or 26.04 LTS**
   (x86_64 or arm64), on a wired link to the printer if possible. CI installs the host
-  software on each of these releases from its minimal image; systemd, nginx and Docker
-  are not part of that test. Any recent mini PC is plenty; failure detection uses
-  about a second of one CPU core every 10 s while printing, and 2 GB of disk.
+  software on each of these releases, on both architectures, from its minimal image;
+  systemd, nginx and Docker are not part of that test. Any recent mini PC is plenty;
+  failure detection uses about a second of one CPU core every 10 s while printing, and
+  2 GB of disk.
 - Both machines on the same LAN. If your router filters between VLANs, the host must
   reach the printer on TCP 7001–7003 and 80 (camera), and the printer must reach the
   host on TCP 7125 (touchscreen).
