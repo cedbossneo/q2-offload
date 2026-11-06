@@ -9,11 +9,17 @@
 # the value goes to the filament in Spoolman, where the next spool of that filament and the
 # OrcaSlicer presets pick it up.
 #
+# Max flow (optional, q2_flow_calibrate): loads and heats the spool (_SPOOL_PREPARE), runs
+# scripts/flow-test.py, saves the recommended max volumetric speed on the filament in Spoolman
+# (orca_filament_max_volumetric_speed, which the presets pick up), then either wipes and shows
+# the result, or runs the pressure advance calibration at a flow under that max.
+#
 # Installed as a symlink into Moonraker's components; enabled by a [q2_calibration] section.
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import json
 import logging
@@ -24,7 +30,16 @@ from typing import Any, Dict, Optional
 REPO = pathlib.Path(__file__).resolve().parents[2]
 PA_FIELD = "orca_pressure_advance"
 PA_ENABLE_FIELD = "orca_enable_pressure_advance"
-NEW_FIELDS = {PA_FIELD: "Orca pressure advance", PA_ENABLE_FIELD: "Orca enable pressure advance"}
+FLOW_FIELD = "orca_filament_max_volumetric_speed"
+NEW_FIELDS = {PA_FIELD: "Orca pressure advance", PA_ENABLE_FIELD: "Orca enable pressure advance",
+              FLOW_FIELD: "Orca max volumetric speed"}
+FLOW_TEST = REPO / "scripts" / "flow-test.py"
+FLOW_RESULT_PREFIX = "Q2_FLOW_RESULT "      # flow-test.py --result
+PA_MAX_VFR = 18.0       # autopa's default sweep flow (mm³/s)
+PA_VFR_SHARE = 0.8      # after a max flow test, the sweep runs at this share of the recommended max
+FLOW_STOPS = {"force": "the force limit stopped the test there",
+              "limit": "above it the filament no longer melts fully",
+              "end": "the end of the test, the real max is higher"}
 DEFAULT_FLOW_RATIO = 1.0
 PA_DECIMALS = 4
 
@@ -66,8 +81,34 @@ def print_settings(spool: Dict[str, Any], presets, load) -> Dict[str, Any]:
         "temperature": int(round(temperature)) if temperature else None,
         "flow_ratio": flow_ratio if flow_ratio and flow_ratio > 0 else DEFAULT_FLOW_RATIO,
         "pressure_advance": first_number(presets.extra_value(filament, PA_FIELD)),
+        "max_flow": first_number(presets.extra_value(filament, FLOW_FIELD)),
         "material": str(filament.get("material") or ""),
     }
+
+
+def pa_flow(recommended: Optional[float]) -> Optional[float]:
+    """The pressure advance sweep's flow after a max flow test: under the max, at most autopa's
+    default. None leaves autopa's default."""
+    if not recommended:
+        return None
+    return min(PA_MAX_VFR, round(recommended * PA_VFR_SHARE, 1))
+
+
+def parse_flow_result(output: str) -> Optional[Dict[str, Any]]:
+    """The JSON line flow-test.py --result prints at the end, else None."""
+    for line in reversed(output.splitlines()):
+        if line.startswith(FLOW_RESULT_PREFIX):
+            try:
+                return json.loads(line[len(FLOW_RESULT_PREFIX):])
+            except ValueError:
+                return None
+    return None
+
+
+def flow_failure(output: str) -> str:
+    """Why flow-test.py gave no result: its last line (SystemExit message or traceback end)."""
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    return lines[-1][:200] if lines else "no output"
 
 
 def quote(text: str) -> str:
@@ -93,6 +134,8 @@ class Q2Calibration:
         self.presets = load_presets_module()
         self.server.register_remote_method("q2_pa_spool_created", self._spool_created)
         self.server.register_remote_method("q2_pa_store", self._store)
+        self.server.register_remote_method("q2_flow_calibrate", self._flow_calibrate)
+        self._flow_busy = False
         self.server.register_event_handler("server:klippy_ready", self._klippy_ready)
 
     async def _klippy_ready(self) -> None:
@@ -158,13 +201,8 @@ class Q2Calibration:
     async def _save(self, spool_id: int, pa: float) -> None:
         try:
             spool = await self._get_spool(spool_id)
-            await self._ensure_fields()
             value = f"{pa:.{PA_DECIMALS}f}"
-            body = {"extra": {PA_FIELD: json.dumps(value), PA_ENABLE_FIELD: json.dumps("1")}}
-            filament_id = spool["filament"]["id"]
-            resp = await self.http.request("PATCH", f"{self._spoolman_url()}/v1/filament/{filament_id}", body=body)
-            if resp.has_error():
-                raise RuntimeError(f"Spoolman: filament {filament_id}: {resp.error}")
+            await self._save_extra(spool, {PA_FIELD: json.dumps(value), PA_ENABLE_FIELD: json.dumps("1")})
         except Exception as e:
             logging.info(f"q2_calibration: spool {spool_id}: pressure advance {pa} not saved ({e})")
             await self._notice("Pressure advance not saved",
@@ -173,6 +211,82 @@ class Q2Calibration:
         await self._notice("Pressure advance saved",
                            f"{spool_name(spool)}: pressure advance {value} saved in Spoolman. "
                            "OrcaSlicer presets follow within a minute")
+
+    async def _flow_calibrate(self, spool_id: int, gate: int = -1, then_pa: int = 0) -> None:
+        self.server.get_event_loop().create_task(self._flow(int(spool_id), int(gate), bool(int(then_pa))))
+
+    async def _run_flow_test(self, temp: int, status: str) -> str:
+        """scripts/flow-test.py, non-interactive; its output (the last line is the result)."""
+        proc = await asyncio.create_subprocess_exec(
+            "python3", str(FLOW_TEST), "--temp", str(temp), "--yes", "--result", "--keep-hot",
+            "--status", status, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+        out, _ = await proc.communicate()
+        return out.decode(errors="replace")
+
+    async def _flow(self, spool_id: int, gate: int, then_pa: bool) -> None:
+        if self._flow_busy:
+            await self._console("a max flow test is already running")
+            return
+        self._flow_busy = True
+        try:
+            await self._flow_run(spool_id, gate, then_pa)
+        finally:
+            self._flow_busy = False
+
+    async def _flow_run(self, spool_id: int, gate: int, then_pa: bool) -> None:
+        try:
+            spool = await self._get_spool(spool_id)
+            settings = await self.server.get_event_loop().run_in_thread(self._settings, spool)
+        except Exception as e:
+            await self._console(f"spool {spool_id}: no max flow test ({e})")
+            return
+        name, temp = spool_name(spool), settings["temperature"]
+        if not temp:
+            await self._console(f"{name}: no nozzle temperature in Spoolman, max flow test skipped")
+            return
+        shown = f'TITLE="Max flow" NAME="{name}"'
+        try:
+            await self.klippy.run_gcode(f"_SPOOL_PREPARE SPOOL={spool_id} GATE={gate} TEMP={temp} {shown}")
+            output = await self._run_flow_test(temp, f"_SPOOL_PA_STATUS SPOOL={spool_id} {shown}")
+        except Exception as e:
+            output = str(e)
+        result = parse_flow_result(output)
+        recommended = (result or {}).get("recommended")
+        title, message = await self._flow_message(spool, name, result, output)
+        if then_pa:
+            # The pressure advance dialog follows; its flow stays under the max just measured
+            await self._console(message)
+            vfr = pa_flow(recommended)
+            await self.klippy.run_gcode(f"SPOOL_PA_CALIBRATE SPOOL={spool_id}" + (f" VFR={vfr:g}" if vfr else ""))
+            return
+        await self.klippy.run_gcode(f"_SPOOL_PA_STATUS SPOOL={spool_id} {shown} STEP=\"Wiping the nozzle\"")
+        await self.klippy.run_gcode(f"_SPOOL_PA_WIPE TEMP={temp}\nM104 S0")
+        await self._notice(title, message, error=not recommended)
+
+    async def _flow_message(self, spool, name, result, output):
+        """Save a measured max flow in Spoolman; the (title, message) to show."""
+        if not result or not result.get("recommended"):
+            why = result.get("message") if result else flow_failure(output)
+            return "Max flow not measured", f"{name}: max flow not measured ({why})"
+        recommended, value = result["recommended"], f"{result['recommended']:g}"
+        try:
+            await self._save_extra(spool, {FLOW_FIELD: json.dumps(value)})
+        except Exception as e:
+            logging.info(f"q2_calibration: spool {spool['id']}: max flow {value} not saved ({e})")
+            return "Max flow not saved", f"{name}: {value} mm3/s could not be saved in Spoolman ({e})"
+        return "Max flow saved", (
+            f"{name}: max volumetric speed {value} mm3/s saved in Spoolman (max flow "
+            f"{'at least ' if result.get('at_least') else ''}{result['max_flow']:g} mm3/s, "
+            f"{FLOW_STOPS.get(result.get('stop'), result.get('message', ''))}). "
+            "OrcaSlicer presets follow within a minute")
+
+    async def _save_extra(self, spool: Dict[str, Any], extra: Dict[str, str]) -> None:
+        await self._ensure_fields()
+        filament_id = spool["filament"]["id"]
+        resp = await self.http.request("PATCH", f"{self._spoolman_url()}/v1/filament/{filament_id}",
+                                       body={"extra": extra})
+        if resp.has_error():
+            raise RuntimeError(f"Spoolman: filament {filament_id}: {resp.error}")
 
     async def _notice(self, title: str, msg: str, error: bool = False) -> None:
         """The result dialog and notification (_SPOOL_PA_NOTICE in q2_pa_calibrate.cfg)."""

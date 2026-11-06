@@ -111,7 +111,7 @@ def test_a_saved_value_drops_the_other_spools_of_that_filament():
     assert saved_pending(run) == {23: dict(ENTRY, filament=17)}
 
 
-def test_offer_saves_the_spool_and_asks_with_three_choices_when_idle():
+def test_offer_saves_the_spool_and_asks_with_four_choices_when_idle():
     params = {"SPOOL": "22", "FILAMENT": "16", "GATE": "1", "TEMP": "255", "FLOW": "0.965", "MATERIAL": "PETG",
               "NAME": "Sunlu Green"}
     run = Run("gcode_macro _SPOOL_PA_OFFER", params, printer())
@@ -119,8 +119,8 @@ def test_offer_saves_the_spool_and_asks_with_three_choices_when_idle():
                                    "NAME": "Sunlu Green"}) in run.commands
     buttons = [args["MSG"] for cmd, args in run.commands
                if cmd == "RESPOND" and "prompt_footer_button" in args.get("MSG", "")]
-    assert [b.split("|")[1] for b in buttons] == ["SPOOL_PA_CALIBRATE SPOOL=22", "_SPOOL_PA_LATER SPOOL=22",
-                                                   "_SPOOL_PA_SKIP SPOOL=22"]
+    assert [b.split("|")[1] for b in buttons] == ["SPOOL_PA_CALIBRATE SPOOL=22", "SPOOL_PA_CALIBRATE SPOOL=22 MAXFLOW=1",
+                                                   "_SPOOL_PA_LATER SPOOL=22", "_SPOOL_PA_SKIP SPOOL=22"]
     assert run.commands[-1] == ("RESPOND", {"TYPE": "command", "MSG": "action:prompt_show"})
 
 
@@ -134,7 +134,35 @@ def test_calibrate_runs_on_the_spool_gate_with_the_material_range():
     run = Run("gcode_macro SPOOL_PA_CALIBRATE", {"SPOOL": "22"}, printer(pending={22: ENTRY}))
     assert run.commands[-1] == ("_SPOOL_PA_RUN", {"SPOOL": "22", "GATE": "1", "TEMP": "255", "FLOW": "0.965",
                                                "KSTART": "0.02", "KEND": "0.12", "KSTEP": "0.01", "APPLY": "0",
-                                               "PRINT": "0"})
+                                               "PRINT": "0", "VFR": "0"})
+
+
+def test_calibrate_with_max_flow_hands_over_to_the_component():
+    run = Run("gcode_macro SPOOL_PA_CALIBRATE", {"SPOOL": "22", "MAXFLOW": "1"}, printer(pending={22: ENTRY}))
+    assert run.remote == [("q2_flow_calibrate", {"spool_id": 22, "gate": 1, "then_pa": 1})]
+    assert "_SPOOL_PA_RUN" not in names(run)
+    # At the start of a print there is no max flow test: the pressure advance runs alone
+    run = Run("gcode_macro SPOOL_PA_CALIBRATE", {"SPOOL": "22", "MAXFLOW": "1", "PRINT": "1"},
+              printer(state="printing", pending={22: ENTRY}))
+    assert run.remote == [] and "_SPOOL_PA_RUN" in names(run)
+
+
+def test_calibrate_passes_the_sweep_flow_on():
+    run = Run("gcode_macro SPOOL_PA_CALIBRATE", {"SPOOL": "22", "VFR": "13.2"}, printer(pending={22: ENTRY}))
+    assert run.commands[-1][1]["VFR"] == "13.2"
+    params = {"SPOOL": "22", "GATE": "1", "TEMP": "255", "FLOW": "1", "KSTART": "0.02", "KEND": "0.12",
+              "KSTEP": "0.01", "VFR": "13.2"}
+    sweep = Run("gcode_macro _SPOOL_PA_RUN", params, printer(gate=1, filament="Loaded"))
+    assert dict(sweep.commands)["AUTOPA_SWEEP"]["VFR"] == "13.2"
+
+
+def test_flow_calibrate_runs_for_a_spool_in_a_slot_when_idle():
+    run = Run("gcode_macro SPOOL_FLOW_CALIBRATE", {"SPOOL": "23"}, printer())
+    assert run.remote == [("q2_flow_calibrate", {"spool_id": 23, "gate": 2, "then_pa": 0})]
+    for state, params, enabled in (("printing", {"SPOOL": "23"}, True), ("standby", {"SPOOL": "40"}, True),
+                                   ("standby", {"SPOOL": "23"}, False)):
+        run = Run("gcode_macro SPOOL_FLOW_CALIBRATE", params, printer(state=state, enabled=enabled))
+        assert run.remote == [] and run.commands[-1][1].get("TYPE") == "error", run.lines
 
 
 def test_calibrate_refuses_during_a_print_unknown_spools_and_spools_out_of_the_box():
@@ -146,23 +174,42 @@ def test_calibrate_refuses_during_a_print_unknown_spools_and_spools_out_of_the_b
         assert run.commands[-1][1].get("TYPE") == "error", run.lines
 
 
-def test_run_loads_the_gate_and_sweeps_at_the_flow_ratio():
+def test_prepare_loads_the_gate_and_heats_over_the_chute():
+    params = {"SPOOL": "22", "GATE": "1", "TEMP": "255"}
+    run = Run("gcode_macro _SPOOL_PREPARE", params, printer(gate=0, filament="Loaded"))
+    order = names(run)
+    assert order.index("MMU_UNLOAD") < order.index("MMU_SELECT") < order.index("MMU_LOAD") \
+        < order.index("MOVE_TO_TRASH") < order.index("M109")
+    assert ("MMU_SELECT", {"GATE": "1"}) in run.commands and run.lines[-1] == "M109 S255"
+    status = [args for cmd, args in run.commands if cmd == "_SPOOL_PA_STATUS"]
+    assert [a["STEP"] for a in status] == ["Loading slot 2", "Heating the nozzle to 255 C"]
+    assert all(a["TITLE"] == "Pressure advance" for a in status)
+    flow = Run("gcode_macro _SPOOL_PREPARE", dict(params, TITLE="Max flow", NAME="Sunlu Green"),
+               printer(gate=1, filament="Loaded"))
+    assert [(a["TITLE"], a["NAME"]) for cmd, a in flow.commands if cmd == "_SPOOL_PA_STATUS"] == [
+        ("Max flow", "Sunlu Green")]
+
+
+def test_prepare_keeps_a_spool_already_loaded():
+    run = Run("gcode_macro _SPOOL_PREPARE", {"SPOOL": "22", "GATE": "1", "TEMP": "255"},
+              printer(gate=1, filament="Loaded"))
+    assert not {"MMU_UNLOAD", "MMU_SELECT", "MMU_LOAD"} & set(names(run))
+
+
+def test_run_prepares_then_sweeps_at_the_flow_ratio():
     params = {"SPOOL": "22", "GATE": "1", "TEMP": "255", "FLOW": "0.965", "KSTART": "0.02", "KEND": "0.12",
               "KSTEP": "0.01", "APPLY": "0"}
     run = Run("gcode_macro _SPOOL_PA_RUN", params, printer(gate=0, filament="Loaded"))
     order = names(run)
-    assert order.index("MMU_UNLOAD") < order.index("MMU_SELECT") < order.index("MMU_LOAD") \
-        < order.index("MOVE_TO_TRASH") < order.index("M109") < order.index("AUTOPA_SWEEP")
-    assert ("MMU_SELECT", {"GATE": "1"}) in run.commands
-    assert "M221 S96.5" in run.lines and run.lines.index("M221 S96.5") < order.index("AUTOPA_SWEEP")
+    assert order == ["RESPOND", "_SPOOL_PREPARE", "_SPOOL_PA_STATUS", "M221", "AUTOPA_SWEEP", "M221",
+                     "_SPOOL_PA_STATUS", "_SPOOL_PA_WIPE", "M104", "_SPOOL_PA_RESULT"]
+    assert run.commands[1][1] == {"SPOOL": "22", "GATE": "1", "TEMP": "255"}
+    assert "M221 S96.5" in run.lines
     assert run.commands[order.index("AUTOPA_SWEEP")][1] == {"APPLY": "0", "KSTART": "0.02", "KEND": "0.12",
                                                             "KSTEP": "0.01"}
-    sweep = order.index("AUTOPA_SWEEP")
-    assert order[sweep + 1:] == ["M221", "_SPOOL_PA_STATUS", "_SPOOL_PA_WIPE", "M104", "_SPOOL_PA_RESULT"]
     assert run.lines[-2] == "M104 S0"
     steps = [args["STEP"] for cmd, args in run.commands if cmd == "_SPOOL_PA_STATUS"]
-    assert steps == ["Loading slot 2", "Heating the nozzle to 255 C", "Measuring with the load cell, about 3 minutes",
-                     "Wiping the nozzle"]
+    assert steps == ["Measuring with the load cell, about 3 minutes", "Wiping the nozzle"]
 
 
 def test_run_in_a_print_keeps_the_heater_on():
@@ -193,6 +240,13 @@ def test_status_shows_the_step_in_a_dialog_and_on_the_status_line():
                     "action:prompt_show"]
 
 
+def test_status_can_show_another_title_and_name():
+    run = Run("gcode_macro _SPOOL_PA_STATUS", {"SPOOL": "30", "STEP": "Measuring at 8 mm3/s", "TITLE": "Max flow",
+                                               "NAME": "Polymaker PLA"}, printer())
+    assert run.lines[0] == "M117 Max flow: Measuring at 8 mm3/s"
+    assert ("RESPOND", {"TYPE": "command", "MSG": "action:prompt_begin Max flow: Polymaker PLA"}) in run.commands
+
+
 def test_notice_is_a_dialog_until_ok_and_a_notification():
     run = Run("gcode_macro _SPOOL_PA_NOTICE", {"TITLE": "Pressure advance saved", "MSG": "Sunlu Green: 0.0451"},
               printer())
@@ -202,13 +256,6 @@ def test_notice_is_a_dialog_until_ok_and_a_notification():
     assert run.lines[0] == "M117 Sunlu Green: 0.0451" and msgs[-1] == "action:prompt_show"
     error = Run("gcode_macro _SPOOL_PA_NOTICE", {"TITLE": "x", "MSG": "y", "ERROR": "1"}, printer())
     assert any(line.endswith("|_SPOOL_PA_CLOSE|error\"") for line in error.lines)
-
-
-def test_run_keeps_a_spool_already_loaded():
-    params = {"SPOOL": "22", "GATE": "1", "TEMP": "255", "FLOW": "1", "KSTART": "0.02", "KEND": "0.12",
-              "KSTEP": "0.01"}
-    run = Run("gcode_macro _SPOOL_PA_RUN", params, printer(gate=1, filament="Loaded"))
-    assert not {"MMU_UNLOAD", "MMU_SELECT", "MMU_LOAD"} & set(names(run))
 
 
 def test_valid_result_is_stored_and_the_spool_leaves_the_list():
