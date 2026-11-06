@@ -9,7 +9,7 @@ spools = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(spools)
 
 PROFILES = {
-    "fdm_filament_common": {"filament_density": ["1.24"], "filament_cost": ["20"]},
+    "fdm_filament_common": {"filament_density": ["1.24"], "filament_cost": ["20"], "filament_multitool_ramming": ["1"]},
     "fdm_filament_pla": {"inherits": "fdm_filament_common", "filament_type": ["PLA"]},
     "Generic PLA @System": {"inherits": "fdm_filament_pla", "filament_id": "OFDSrzZ8", "setting_id": "abc", "type": "filament"},
 }
@@ -29,6 +29,21 @@ def test_preset_has_no_parent_and_its_own_id():
 
 def test_settings_of_the_whole_chain_are_flattened():
     assert build()["filament_cost"] == ["20"]
+
+
+def test_slicer_tool_change_is_off_for_happy_hare():
+    preset = build()
+    assert preset["filament_multitool_ramming"] == ["0"]
+    for key in ("filament_cooling_moves", "filament_loading_speed", "filament_unloading_speed_start"):
+        assert preset[key] == ["0"], key
+
+
+def test_tool_change_fields_match_the_filament_templates():
+    import json
+    for path in sorted((ROOT / "slicer/orca/filament").glob("*.json")):
+        template = json.loads(path.read_text())
+        fields = {key: value for key, value in template.items() if key in spools.HAPPY_HARE_TOOL_CHANGE}
+        assert fields == spools.HAPPY_HARE_TOOL_CHANGE, path.name
 
 
 def test_spoolman_values_win():

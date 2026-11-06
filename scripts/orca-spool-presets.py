@@ -27,6 +27,14 @@ SERIES_ID = 1  # QidiPrinterAgent::infer_series_id for a Q2
 LIBRARY = "https://raw.githubusercontent.com/OrcaSlicer/OrcaSlicer/%s/resources/profiles/OrcaFilamentLibrary/filament/%s.json"
 PRESET_VERSION = "2.5.0.0"  # Orca refuses to load a preset without a version
 BASE_BY_MATERIAL = {"PLA+": "PLA", "ABS+": "ABS"}
+# Happy Hare cuts, unloads and loads the filament: the slicer's own tool change (ramming, cooling
+# moves, loading speeds) must do nothing. The same fields as slicer/orca/filament/*@Q2 Offload.json,
+# which the Generic @System parents don't set, so Orca would fall back to its Prusa MMU defaults.
+HAPPY_HARE_TOOL_CHANGE = {key: ["0"] for key in (
+    "filament_loading_speed", "filament_loading_speed_start", "filament_unloading_speed",
+    "filament_unloading_speed_start", "filament_toolchange_delay", "filament_cooling_moves",
+    "filament_cooling_initial_speed", "filament_cooling_final_speed", "filament_stamping_loading_speed",
+    "filament_stamping_distance", "filament_multitool_ramming")}
 
 
 def fetch_json(url):
@@ -111,6 +119,7 @@ def build_preset(spool, base):
         "filament_id": filament_id(spool["id"]),
         "filament_settings_id": [name],
         "filament_type": [filament["material"]],
+        **HAPPY_HARE_TOOL_CHANGE,
     })
     vendor = (filament.get("vendor") or {}).get("name")
     if vendor:
