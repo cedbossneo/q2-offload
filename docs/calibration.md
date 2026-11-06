@@ -66,8 +66,27 @@ Keep `max_accel` in `[printer]` at or below what the recommendation allows for y
 
 ## 5. Pressure advance (autopa)
 
-Open `http://<host>/autopa/`, load the filament, run a **Sweep**. autopa measures with the
-load cell and can remember the value per filament.
+**New spools from an NFC tag** (with Spoolman): when a tag creates a spool whose filament
+has no pressure advance yet, a dialog asks to measure it now, at the start of the next print
+that uses that spool, or never. The measurement is autopa's load-cell sweep, in the air over
+the chute (about 3 minutes, some filament into the bucket), at the temperature and flow ratio
+the slicer prints that filament with:
+
+- temperature: the filament's in Spoolman, which comes from SpoolmanDB when the tag's brand,
+  material and colour match an entry there (Happy Hare patch 0007), else from the tag;
+- flow ratio: `orca_filament_flow_ratio` on the filament in Spoolman, else OrcaSlicer's
+  Generic preset of the material.
+
+A valid result is saved on the filament in Spoolman (`orca_pressure_advance`), so another
+spool of the same filament is not measured again, and the OrcaSlicer presets (Q2 Spool
+Presets plugin) pick it up within a minute. A result on an edge of the range swept for the
+material is not saved; the spool stays waiting and `SPOOL_PA_CALIBRATE SPOOL=<id>` retries
+(at print start it is only tried once). During a print the value is applied right away only
+when the print uses that one spool. The waiting spools are in `saved_variables.cfg`
+(`q2_pa_pending`).
+
+**Any filament, by hand:** open `http://<host>/autopa/`, load the filament, run a **Sweep**.
+autopa measures with the load cell and can remember the value per filament.
 
 ## 6. Qidi Box (Happy Hare)
 

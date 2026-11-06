@@ -1,0 +1,318 @@
+From a8ae5597067669a62507105423918830c61f883c Mon Sep 17 00:00:00 2001
+From: Cedric Hauber <cedric@MacBook-Pro-de-Cedric-2.local>
+Date: Fri, 6 Nov 2026 10:17:51 +0100
+Subject: [PATCH 7/7] feat(nfc): fill a tag's filament from SpoolmanDB for
+ every brand
+
+SpoolmanDB was only used for Bambu tags. A tag written with a phone app carries brand, material and colour, and often the app's generic temperatures. An unknown tag of any brand is now looked up in Spoolman's copy of SpoolmanDB (/v1/external/filament): same manufacturer and material, closest colour within an RGB distance of 60, the tag's material detail breaking ties. A match gives the manufacturer's name, temperatures (they win over the tag's), density and spool weight, and its SpoolmanDB id as external_id, so a filament already imported from SpoolmanDB in Spoolman is reused. Without a match, or with an older Spoolman, the tag data is used as before.
+---
+ components/mmu_server.py          | 114 ++++++++++++++++++++++++++++--
+ test/hh/spoolman.py               |   6 ++
+ test/test_mmu_spoolmandb_match.py |  96 +++++++++++++++++++++++++
+ 3 files changed, 210 insertions(+), 6 deletions(-)
+ create mode 100644 test/test_mmu_spoolmandb_match.py
+
+diff --git a/components/mmu_server.py b/components/mmu_server.py
+index e93c50e2..22ead908 100644
+--- a/components/mmu_server.py
++++ b/components/mmu_server.py
+@@ -105,6 +105,7 @@ DENSITY_FALLBACK = {               # g/cm³, used when SpoolmanDB is unreachable
+     "hips": 1.03, "pva": 1.23, "tpe": 1.21, "peek": 1.32, "pei": 1.27, "pom": 1.41,
+ }
+ DENSITY_DEFAULT        = 1.24      # PLA - safe default for unknown materials
++SPOOLMANDB_COLOR_DISTANCE = 60     # Max RGB distance for a SpoolmanDB colour to match a tag colour
+ DEFAULT_SPOOL_WEIGHT_G = 1000      # Net filament weight when the tag doesn't supply one
+ 
+ TAG_FORMAT_BRANDS = {              # Brand deduced from parser tag_format when the tag has none
+@@ -182,6 +183,7 @@ class MmuServer:
+         # the first tag auto-create. None = not yet fetched; {}/[] = fetch failed
+         # (kept so a failed fetch isn't retried on every scan).
+         self._spoolmandb_materials = None   # {material_lower: density}
++        self._spoolmandb_filaments = None   # Spoolman's copy of SpoolmanDB (/v1/external/filament)
+         self._spoolmandb_bambu     = None   # [filament dict, ...] from bambulab.json
+         self._spoolmandb_bambu_mfr = None   # top-level manufacturer name (e.g. "Bambu Lab")
+ 
+@@ -1208,17 +1210,28 @@ class MmuServer:
+         if canonical_color_hex:
+             color_hex = canonical_color_hex
+ 
++        # 1b. Any other brand: the manufacturer's entry in SpoolmanDB, by brand, material
++        # and colour. Its temperatures come from the manufacturer, so they win over the
++        # tag's, which are often an app's generic defaults.
++        db_match = None
++        if bambu_match is None:
++            db_match = await self._match_spoolmandb_filament(brand, material, color_hex, metadata)
++            if db_match is not None:
++                density = self._to_float(db_match.get("density"), density)
++                brand = str(db_match.get("manufacturer") or brand)
++
+         # 2. Vendor (find or create, with Generic fallback)
+         vendor_id, vendor_name = await self._resolve_vendor(brand, is_bambu)
+ 
+         # 3+4. Filament (find existing or create from tag + SpoolmanDB data)
+         filament_id = await self._find_or_create_filament(
+-            metadata, color_hex, density, diameter, weight, vendor_id, vendor_name, bambu_match)
++            metadata, color_hex, density, diameter, weight, vendor_id, vendor_name,
++            bambu_match or db_match, db_preferred=db_match is not None)
+         if filament_id is None:
+             return None
+ 
+         # 5. Spool, with the UID written inline into the extra field
+-        return await self._create_spool(filament_id, metadata, uid_norm, weight, bambu_match)
++        return await self._create_spool(filament_id, metadata, uid_norm, weight, bambu_match or db_match)
+ 
+ 
+     async def _resolve_density(self, material, color_hex, material_id, is_bambu):
+@@ -1317,15 +1330,21 @@ class MmuServer:
+ 
+ 
+     async def _find_or_create_filament(self, metadata, color_hex, density,
+-                                       diameter, weight, vendor_id, vendor_name, bambu_match) -> int | None:
++                                       diameter, weight, vendor_id, vendor_name, bambu_match,
++                                       db_preferred=False) -> int | None:
+         '''
+-        Find an existing filament (by Bambu external_id, then material + vendor
+-        with colour preference) or create one from tag + SpoolmanDB metadata.
++        Find an existing filament (by Bambu or SpoolmanDB external_id, then material +
++        vendor with colour preference) or create one from tag + SpoolmanDB metadata.
++        'bambu_match' is the SpoolmanDB entry (Bambu or, with db_preferred, any brand);
++        db_preferred makes its temperatures win over the tag's.
+         Returns filament_id, or None on failure.
+         '''
+         base = self.spoolman.spoolman_url
+         material = str(metadata.get("material") or "").strip()
+         material_id = str(metadata.get("material_id") or "").strip() or None
++        if material_id is None and db_preferred:
++            # The SpoolmanDB id, as Spoolman stores it when a filament is imported from it
++            material_id = str(bambu_match.get("id") or "").strip() or None
+ 
+         # --- Search by Bambu SKU (external_id) first ---
+         if material_id:
+@@ -1384,7 +1403,15 @@ class MmuServer:
+         min_temp = metadata.get("min_temp")
+         max_temp = metadata.get("max_temp")
+         bed_temp = metadata.get("bed_temp")
+-        if bambu_match is not None:
++        if db_preferred:
++            # One manufacturer's value: it replaces the tag's range
++            db_temp = self._to_int_safe(bambu_match.get("extruder_temp"))
++            if db_temp is not None:
++                min_temp = max_temp = db_temp
++            db_bed = self._to_int_safe(bambu_match.get("bed_temp"))
++            if db_bed is not None:
++                bed_temp = db_bed
++        elif bambu_match is not None:
+             if min_temp is None:
+                 min_temp = bambu_match.get("extruder_temp")
+             if max_temp is None:
+@@ -1511,6 +1538,81 @@ class MmuServer:
+         return result
+ 
+ 
++    async def _fetch_spoolmandb_filaments(self) -> list:
++        '''
++        Fetch + cache Spoolman's copy of SpoolmanDB (every manufacturer's filaments),
++        from the Spoolman server rather than the internet. Returns [] on failure
++        (cached so it isn't retried on every scan).
++        '''
++        if self._spoolmandb_filaments is not None:
++            return self._spoolmandb_filaments
++        filaments = []
++        try:
++            resp = await self.http_client.get(url=f"{self.spoolman.spoolman_url}/v1/external/filament")
++            if resp.has_error():
++                raise RuntimeError(f"HTTP {resp.status_code}")
++            raw = resp.json()
++            if isinstance(raw, list):
++                filaments = [f for f in raw if isinstance(f, dict)]
++            logging.info(f"NFC: SpoolmanDB filaments loaded from Spoolman ({len(filaments)} entries)")
++        except Exception as e:
++            logging.info(f"NFC: SpoolmanDB filaments fetch failed ({e}); tag data only")
++        self._spoolmandb_filaments = filaments
++        return filaments
++
++
++    @staticmethod
++    def _brand_key(name):
++        '''Brand as compared with SpoolmanDB manufacturers: case and punctuation ignored.'''
++        return re.sub(r'[^0-9a-z]', '', str(name or '').lower())
++
++
++    @staticmethod
++    def _color_distance(hex_a, hex_b):
++        '''RGB distance between two 6-digit hex colours, None if either is unusable.'''
++        try:
++            a = [int(hex_a[i:i + 2], 16) for i in (0, 2, 4)]
++            b = [int(hex_b[i:i + 2], 16) for i in (0, 2, 4)]
++        except (TypeError, ValueError, IndexError):
++            return None
++        return sum((x - y) ** 2 for x, y in zip(a, b)) ** 0.5
++
++
++    async def _match_spoolmandb_filament(self, brand, material, color_hex, metadata):
++        '''
++        The SpoolmanDB entry for a tag of any brand: same manufacturer and material, and
++        the closest colour within SPOOLMANDB_COLOR_DISTANCE (an app's colour picker rarely
++        gives the exact hex). Among equally close entries, the one whose name shares the
++        most words with the tag's material detail wins. Returns the entry or None.
++        '''
++        brand_key = self._brand_key(brand)
++        if not brand_key or brand_key == "generic" or not color_hex:
++            return None
++        material_lower = material.lower().strip()
++        detail_words = set(re.findall(r'[0-9a-z]+', str(metadata.get("material_detail") or "").lower()))
++        best = None
++        for entry in await self._fetch_spoolmandb_filaments():
++            if self._brand_key(entry.get("manufacturer")) != brand_key:
++                continue
++            if str(entry.get("material") or "").lower().strip() != material_lower:
++                continue
++            hexes = [entry.get("color_hex")] + list(entry.get("color_hexes") or [])
++            distances = [d for d in (self._color_distance(color_hex, str(h or "").lstrip("#").upper())
++                                     for h in hexes) if d is not None]
++            if not distances or min(distances) > SPOOLMANDB_COLOR_DISTANCE:
++                continue
++            words = set(re.findall(r'[0-9a-z]+', str(entry.get("name") or "").lower()))
++            rank = (min(distances), -len(detail_words & words))
++            if best is None or rank < best[0]:
++                best = (rank, entry)
++        if best is None:
++            logging.info(f"NFC: no SpoolmanDB filament for {brand!r} {material!r} #{color_hex}")
++            return None
++        logging.info(f"NFC: SpoolmanDB match {best[1].get('id')!r} for {brand!r} {material!r} "
++                     f"#{color_hex} (colour distance {best[0][0]:.0f})")
++        return best[1]
++
++
+     async def _fetch_spoolmandb_bambu(self) -> list:
+         '''
+         Fetch + cache the SpoolmanDB Bambu Lab filament list (bambulab.json) and
+diff --git a/test/hh/spoolman.py b/test/hh/spoolman.py
+index 189f04d7..329391e0 100644
+--- a/test/hh/spoolman.py
++++ b/test/hh/spoolman.py
+@@ -112,6 +112,8 @@ class InMemorySpoolman:
+         self.offline = False        # every request returns 503
+         self.created_spools = []
+         self.patched_spools = []
++        # Spoolman's copy of SpoolmanDB (GET /v1/external/filament); None = endpoint missing
++        self.external_filaments = None
+ 
+     # -- construction helpers used by tests ---------------------------------
+     def add_vendor(self, name):
+@@ -228,6 +230,10 @@ class InMemorySpoolman:
+             return self._vendor(method, parts, query, body)
+         if parts[1] == 'filament':
+             return self._filament(method, parts, query, body)
++        if parts[1:3] == ['external', 'filament'] and method == 'GET':
++            if self.external_filaments is None:
++                return Response(404)
++            return Response(200, [dict(f) for f in self.external_filaments])
+         return Response(404)
+ 
+     def _field(self, method, parts, body):
+diff --git a/test/test_mmu_spoolmandb_match.py b/test/test_mmu_spoolmandb_match.py
+new file mode 100644
+index 00000000..6b9c55ee
+--- /dev/null
++++ b/test/test_mmu_spoolmandb_match.py
+@@ -0,0 +1,96 @@
++# Happy Hare test harness - SpoolmanDB enrichment for tags of any brand.
++#
++# A tag written with a phone app (OpenSpool...) carries brand, material and colour, and
++# often the app's generic temperatures. When an unknown tag creates a filament, Moonraker
++# looks the brand, material and closest colour up in Spoolman's copy of SpoolmanDB
++# (/v1/external/filament). A match gives the manufacturer's name, temperatures, density and
++# spool weight, and its SpoolmanDB id as external_id, so a filament already imported from
++# SpoolmanDB in Spoolman's UI is reused instead of duplicated.
++#
++#   ./venv/bin/python -m unittest test.test_mmu_spoolmandb_match
++#
++# This file may be distributed under the terms of the GNU GPLv3 license.
++
++import logging
++import unittest
++
++from test.test_mmu_moonraker import MoonrakerTestCase, UNKNOWN_UID
++
++logging.getLogger().setLevel(logging.CRITICAL)
++
++TAG = {
++    'material': 'PETG',
++    'brand': 'SUNLU',
++    'color_hex': '1E9E3C',          # an app's green, close to Sunlu's
++    'material_detail': 'PETG',
++    'min_temp': 190,                # app defaults, not Sunlu's
++    'max_temp': 230,
++}
++SUNLU_GREEN = {
++    'id': 'sunlu_petg_green_1000_175_p', 'manufacturer': 'Sunlu', 'name': 'Green',
++    'material': 'PETG', 'density': 1.23, 'weight': 1000.0, 'spool_weight': 135.0,
++    'diameter': 1.75, 'color_hex': '1A9B3A', 'color_hexes': None,
++    'extruder_temp': 255, 'bed_temp': 75,
++}
++SUNLU_TEAL = dict(SUNLU_GREEN, id='sunlu_petg_teal_1000_175_p', name='Teal', color_hex='00807F')
++SUNLU_GREEN_PLA = dict(SUNLU_GREEN, id='sunlu_pla_green_1000_175_p', material='PLA')
++ESUN_GREEN = dict(SUNLU_GREEN, id='esun_petg_green_1000_175_n', manufacturer='eSUN')
++
++
++class SpoolmanDbMatchTestCase(MoonrakerTestCase):
++
++    def setUp(self):
++        super().setUp()
++        self.hh.db.external_filaments = [SUNLU_TEAL, SUNLU_GREEN_PLA, ESUN_GREEN, SUNLU_GREEN]
++
++    def scan(self, tag=TAG):
++        self.hh.call_remote('spoolman_get_spool_by_uid', uid=UNKNOWN_UID, gate=1,
++                            metadata=tag, save=True, silent=True)
++        self.assertEqual(len(self.hh.db.created_spools), 1)
++        return self.hh.db.spools[self.hh.db.created_spools[0]]
++
++    def test_manufacturer_data_fills_the_new_filament(self):
++        filament = self.scan()['filament']
++        self.assertEqual(filament['external_id'], 'sunlu_petg_green_1000_175_p')
++        self.assertEqual(filament['name'], 'Green')
++        self.assertEqual(filament['density'], 1.23)
++        self.assertEqual(filament['vendor']['name'], 'Sunlu')
++
++    def test_manufacturer_temperatures_win_over_the_tag(self):
++        filament = self.scan()['filament']
++        self.assertEqual(filament['settings_extruder_temp'], 255)
++        self.assertEqual(filament['settings_bed_temp'], 75)
++
++    def test_spool_weight_comes_from_the_match(self):
++        self.assertEqual(self.scan()['spool_weight'], 135.0)
++
++    def test_a_filament_imported_from_spoolmandb_is_reused(self):
++        fid = self.hh.db.add_filament(name='Green', material='PETG', vendor='Sunlu',
++                                      color_hex='1A9B3A', external_id='sunlu_petg_green_1000_175_p')
++        self.assertEqual(self.scan()['filament']['id'], fid)
++
++    def test_a_distant_colour_does_not_match(self):
++        filament = self.scan(dict(TAG, color_hex='FF00FF'))['filament']
++        self.assertIsNone(filament['external_id'])
++        self.assertEqual(filament['settings_extruder_temp'], 210)   # the tag's range
++
++    def test_unknown_brand_keeps_the_tag_data(self):
++        filament = self.scan(dict(TAG, brand='NoSuchBrand'))['filament']
++        self.assertIsNone(filament['external_id'])
++        self.assertEqual(filament['settings_extruder_temp'], 210)
++
++    def test_material_detail_breaks_a_colour_tie(self):
++        matte = dict(SUNLU_GREEN, id='sunlu_petg_mattegreen_1000_175_p', name='Matte Green')
++        self.hh.db.external_filaments = [SUNLU_GREEN, matte]
++        filament = self.scan(dict(TAG, material_detail='PETG Matte'))['filament']
++        self.assertEqual(filament['external_id'], 'sunlu_petg_mattegreen_1000_175_p')
++
++    def test_spoolman_without_the_endpoint_keeps_the_tag_data(self):
++        self.hh.db.external_filaments = None
++        filament = self.scan()['filament']
++        self.assertIsNone(filament['external_id'])
++        self.assertEqual(filament['settings_extruder_temp'], 210)
++
++
++if __name__ == '__main__':
++    unittest.main()
+-- 
+2.54.0 (Apple Git-157)
+
