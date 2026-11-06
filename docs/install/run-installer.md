@@ -57,9 +57,10 @@ questions: the longest part. It also makes a backup of the printer's configurati
 
 ## First checks
 
-10. **Load cell.** The load cell under the nozzle is what finds the bed. If it hasn't been
-    measured yet, the installer offers to do it now. Then it asks you to **push the nozzle up
-    gently with a finger**, a few times: the printer is only homed if it sees those taps.
+10. **Load cell zero.** The load cell under the nozzle is what finds the bed. It needs no
+    calibration, only its reading at rest: make sure nothing touches the nozzle and answer
+    `y`. Then **push the nozzle up gently with a finger**, a few times, when asked: the
+    printer is only homed if it sees those taps.
 
 11. **PID and input shaper.** It offers to measure the heaters (about 10 minutes) and the
     vibrations of the toolhead (about 5 minutes, **bed empty**). Say yes: your printer's own
@@ -83,7 +84,8 @@ Next: [Calibrate](calibrate.md).
 Without the `git checkout` line you install the head of `main`, the `latest` channel.
 
 Other commands, once installed: `./install.sh status` (services on both sides),
-`./install.sh check` (checks the install), `./install.sh update`, `./install.sh flash`,
+`./install.sh check` (checks the install), `./install.sh calibrate` (load cell zero if missing,
+then PID and input shaper), `./install.sh update`, `./install.sh flash`,
 `./install.sh host` (host part only), `./install.sh printer` (printer part only).
 
 </details>

@@ -34,13 +34,13 @@ calibrate_load_cell_tare() {
     local tare
     [ "$(status_field load_cell_probe is_calibrated)" = True ] && return 0
     [ -n "$(status_field load_cell_probe counts_per_gram)" ] || {
-        warn "load cell has no counts_per_gram: run LOAD_CELL_CALIBRATE (https://cedbossneo.github.io/q2-offload/docs/install/calibrate/)"; return 1; }
+        warn "load cell has no counts_per_gram: put the standard value back in [load_cell_probe] of printer.cfg (counts_per_gram: 206.38624), then run ./install.sh calibrate"; return 1; }
     cat <<EOF
 
 ${C_WARN}Load cell zero${C_OFF}: the Z probe needs the load cell reading at rest.
 Make sure NOTHING touches the nozzle (no print, no tool, no filament blob on the bed under it).
 EOF
-    confirm "Measure it now?" y || { warn "probing will fail until LOAD_CELL_CALIBRATE is done"; return 1; }
+    confirm "Measure it now?" y || { warn "the printer cannot home until the zero is measured: run ./install.sh calibrate"; return 1; }
     gcode "LOAD_CELL_TARE" || return 1
     sleep 1
     tare="$(status_field load_cell_probe tare_counts)"
@@ -59,7 +59,7 @@ open(path, 'w').write(body[:m.start(1)] + section + body[m.end(1):] + sep + auto
 EOF
     restart_klipper || return 1
     [ "$(status_field load_cell_probe is_calibrated)" = True ] \
-        || { warn "load cell still not calibrated: run LOAD_CELL_CALIBRATE"; return 1; }
+        || { warn "load cell still not calibrated: check klippy.log, then run ./install.sh calibrate"; return 1; }
     ok "load cell zero: ${tare} counts"
     load_cell_tap_test
 }
@@ -131,8 +131,8 @@ calibrate_offer() {
     cat <<EOF
 
 ${C_INFO}Calibration${C_OFF}
-The printer now runs on standard Q2 values: Qidi's PID and input shaper, a load cell scale
-measured on another Q2$(has_box && printf ', the Box gear rotation distance (13.8) and bowden length (%s mm)\nof a stock Box' "$BOX_BOWDEN_LENGTH"). That is enough to print, but this printer's own values are safer and better.
+The printer now runs on standard Q2 values: Qidi's PID and input shaper, the load cell scale
+(the same sensor on every Q2; its zero was measured just now)$(has_box && printf ', the Box gear rotation distance (13.8) and bowden length (%s mm)\nof a stock Box' "$BOX_BOWDEN_LENGTH"). That is enough to print, but this printer's own values are safer and better.
 Two of them take a few minutes and can run now (stay next to the printer):
 EOF
     if confirm "PID: heat the hotend to 250 °C and the bed to 70 °C, about 10 minutes?" y; then
@@ -154,7 +154,7 @@ EOF
     cat <<EOF
 
 Still worth doing yourself (https://cedbossneo.github.io/q2-offload/docs/install/calibrate/):
-  - load cell scale with a known weight: LOAD_CELL_CALIBRATE
+  - bed: Z_TILT_ADJUST, BED_MESH_CALIBRATE
 $(has_box && echo '  - Box gears and bowden: MMU_CALIBRATE_GEAR, MMU_CALIBRATE_BOWDEN (Happy Hare)')
   - pressure advance per filament: autopa
 EOF

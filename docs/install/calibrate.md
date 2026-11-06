@@ -5,23 +5,16 @@ description: The calibrations worth doing once, next to the printer, in this ord
 
 The printer already prints with standard Q2 values. These calibrations replace them with your
 printer's own. Run them from the console of Mainsail or Fluidd, once Klipper says **ready**,
-in this order. You can skip the ones the installer already did (PID, input shaper).
+in this order. Skip the ones the installer already did (PID, input shaper).
 
 Each `SAVE_CONFIG` writes the result at the bottom of `printer.cfg` and restarts Klipper.
 
-1. **Load cell.** The load cell under the nozzle is the Z probe. If the installer didn't
-   measure it:
+> [!NOTE]
+> **The load cell needs no calibration**, as on the stock firmware: every Q2 has the same
+> sensor, so the standard scale fits all of them, and the installer measures your printer's
+> zero by itself. If you skipped that question, run `./install.sh calibrate`.
 
-   ```
-   LOAD_CELL_DIAGNOSTIC
-   LOAD_CELL_CALIBRATE
-   SAVE_CONFIG
-   ```
-
-   The first command shows the readings: they must change when you press the nozzle gently.
-   The second guides you: tare, then a known weight on the nozzle.
-
-2. **Heaters.**
+1. **Heaters.**
 
    ```
    PID_CALIBRATE HEATER=extruder TARGET=250
@@ -30,7 +23,7 @@ Each `SAVE_CONFIG` writes the result at the bottom of `printer.cfg` and restarts
    SAVE_CONFIG
    ```
 
-3. **Gantry and bed.**
+2. **Gantry and bed.**
 
    ```
    G28
@@ -41,7 +34,7 @@ Each `SAVE_CONFIG` writes the result at the bottom of `printer.cfg` and restarts
 
    Prints then measure only the area of the part, at the start of each print.
 
-4. **Input shaper.** The toolhead's accelerometer measures its vibrations. Bed empty:
+3. **Input shaper.** The toolhead's accelerometer measures its vibrations. Bed empty:
 
    ```
    SHAPER_CALIBRATE
@@ -50,7 +43,7 @@ Each `SAVE_CONFIG` writes the result at the bottom of `printer.cfg` and restarts
 
    Keep `max_accel` in `[printer]` at or below what the result recommends.
 
-5. **The Box** (with a Box). One spool loaded in each gate:
+4. **The Box** (with a Box). One spool loaded in each gate:
 
    ```
    MMU_HOME
@@ -84,8 +77,27 @@ again in `printer.cfg` wins over the calibrated one.
 </details>
 
 <details>
-<summary>Moving Z before the load cell is calibrated</summary>
+<summary>The load cell, in detail</summary>
 
-`FAKE_HOME_Z` marks Z as homed at mid-travel without probing. Watch the nozzle.
+Klipper uses two values in `[load_cell_probe]`:
+
+- `counts_per_gram`, the scale: it depends on the sensor, its gain and the load cell, the
+  same on every Q2. q2-offload ships the value measured on a Q2 (206.4).
+- `reference_tare_counts`, the reading at rest: it differs a little from one printer to the
+  next. The installer measures it with nothing touching the nozzle, then asks you to push the
+  nozzle up a few times to check the probe reacts. Klipper uses it for its safety limit; each
+  probe zeroes itself anyway.
+
+To measure your own scale anyway (optional), with a known weight:
+
+```
+LOAD_CELL_DIAGNOSTIC
+LOAD_CELL_CALIBRATE
+SAVE_CONFIG
+```
+
+The first command shows the readings: they must change when you press the nozzle gently.
+The second guides you: tare, then the weight on the nozzle. `FAKE_HOME_Z` marks Z as homed at
+mid-travel without probing, if you need to move Z first; watch the nozzle.
 
 </details>

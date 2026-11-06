@@ -10,6 +10,7 @@
 #   ./install.sh flash           reflash the MCUs, then bring Klipper to the same version
 #   ./install.sh status          show what is installed and running
 #   ./install.sh check           check that every installed service answers
+#   ./install.sh calibrate       measure the load cell zero, then offer PID and input shaper
 #
 # Options:
 #   --printer <ip>               printer IP address (asked otherwise)
@@ -58,7 +59,7 @@ usage() { sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 command="install"
 case "${1:-}" in
-    install|update|host|printer|flash|status|check|_update-check|_update-user) command="$1"; shift ;;
+    install|update|host|printer|flash|status|check|calibrate|_update-check|_update-user) command="$1"; shift ;;
     -h|--help) usage ;;
 esac
 while [ $# -gt 0 ]; do
@@ -417,7 +418,7 @@ final_notes() {
     has detect && echo "  Detection   $(web_url "$(web_port)")/detect/"
     cat <<EOF
 
-Next: calibrate this machine (load cell, PID, input shaper$(has_box && echo ', Box gears')): https://cedbossneo.github.io/q2-offload/docs/install/calibrate/
+Next: the calibrations left to do (bed$(has_box && echo ', Box')): https://cedbossneo.github.io/q2-offload/docs/install/calibrate/
 Update later from the update manager in Mainsail/Fluidd, or with ./install.sh update
 EOF
 }
@@ -433,4 +434,7 @@ case "$command" in
         host_klipper; proot proxies-start; host_start ;;
     status) do_status ;;
     check) [ -f "$SETTINGS" ] || die "not installed yet"; verify_install ;;
+    calibrate) [ -f "$SETTINGS" ] || die "not installed yet"
+        printing && die "a print is running"; klipper_ready || die "Klipper is not ready"
+        calibrate_load_cell_tare || true; calibrate_offer ;;
 esac
