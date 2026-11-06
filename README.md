@@ -1,5 +1,7 @@
 # q2-offload
 
+**[See how a spool goes from the bag to the first layer](https://cedbossneo.github.io/q2-offload/)**
+
 Run **mainline Klipper** for a **Qidi Q2 + Qidi Box** on another Linux machine (a mini PC,
 a NAS, a Raspberry Pi 4/5…). The printer's own board keeps only the jobs it is good at:
 it forwards the three MCU serial links over the network, runs the touchscreen
