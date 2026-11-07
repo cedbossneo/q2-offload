@@ -73,7 +73,9 @@
 .dry-form .form-actions .btn-heat { flex: 1 1 auto; }
 @media (min-width: 600px) { .dry-form .form-actions .btn-heat { flex: 0 0 auto; min-width: 180px; } }
 .hint:empty, .msg:empty { display: none; }
-.keepdry .switch { align-items: flex-start; }
+.keepdry .switch, .turn-switch { align-items: flex-start; }
+.turn-switch { grid-column: 1 / -1; }
+.turn-switch[hidden] { display: none; }
 .keepdry .switch-track { margin-top: 1px; }
 .keepdry .switch strong { font-weight: 640; }
 .switch-hint { display: block; margin-top: 2px; }

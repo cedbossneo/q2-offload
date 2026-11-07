@@ -23,8 +23,12 @@ humidity, the Box temperature and the loaded spools. From there:
 
 ## Two ways to dry
 
-- **Spools loaded**: start a cycle with the filament in place. The spools don't turn, and the
-  filament stays parked 80 mm before the hub.
+- **Spools loaded**: start a cycle with the filament in place, parked 80 mm before the hub.
+  With **Turn the spools**, every 5 minutes each spool turns a little so it heats evenly: its
+  filament moves back up to 30 cm, then returns, never toward the hub. Not while printing,
+  and never the spool loaded in the toolhead. At the end each filament is back at its park; if
+  the cycle is cut short (a print, a restart) it may stay a little behind, which the next load
+  makes up for.
 - **Spools out**, for a deeper dry (*Spools out* mode on the page): eject the filaments first
   and secure each end to its spool. Every 5 minutes each empty gate turns its spool a little,
   so it heats evenly, as in the stock firmware. Gates that still hold filament never move.
@@ -39,7 +43,7 @@ the end of the print, but a drying cycle that was running finishes.
 <details>
 <summary>Commands and settings</summary>
 
-- Drying: `MMU_HEATER DRY=1`, with the spools out `MMU_HEATER DRY=1 ROTATE=1 GATES=0,1,2,3`
+- Drying: `MMU_HEATER DRY=1`, turning the loaded spools `MMU_HEATER DRY=1 ROTATE=1`, with the spools out `MMU_HEATER DRY=1 ROTATE=1 GATES=0,1,2,3`
   (eject first with `MMU_EJECT GATE=n`). Temperatures and times: `drying_data` in
   `config/happy-hare/overrides.cfg`.
 - Keep-dry: `MMU_KEEP_DRY TRIGGER=40 TARGET=25` changes the thresholds, `MMU_KEEP_DRY
@@ -49,7 +53,9 @@ the end of the print, but a drying cycle that was running finishes.
   turns it off (end G-code, `PRINT_END`, cancel). `SET_GCODE_VARIABLE MACRO=_BOX_PRINT_HEAT
   VARIABLE=enable VALUE=False` disables it.
 - Rotation with the spools out: each empty gate retracts 50 mm at 80 mm/s every 5 minutes
-  (`heater_rotate_*` in `overrides.cfg`).
+  (`heater_rotate_*` in `overrides.cfg`). With the spools loaded: 50 mm steps between the park
+  and `heater_rotate_loaded_travel` (300 mm) behind it, Happy Hare patch 0008. The positions
+  are saved (`mmu_state_drying_sweep`) until Happy Hare homes the gate again.
 - The heater runs at full power and regulates on the air sensor, like the stock firmware, so
   its elements run much hotter than the air while it warms up (above 90 °C, then about 60 °C).
   As in stock, only their Klipper `max_temp` (130 °C) watches them.

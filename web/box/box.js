@@ -114,6 +114,12 @@ function dryingGates(mmu) {
   })).filter((g) => (mode === "out" ? g.empty : !g.empty));
 }
 
+// Spools loaded and turning, or spools out: the gates the cycle dries tell
+function driesOnlyEmptyGates(mmu) {
+  const dried = (mmu.drying_state || []).map((d, i) => i).filter((i) => mmu.drying_state[i] === "active");
+  return dried.length > 0 && dried.every((i) => (mmu.gate_status || [])[i] === 0);
+}
+
 function canEject(mmu, gate, printing) {
   // Never the gate whose filament is in the bowden or the toolhead
   const inUse = mmu.filament !== "Unloaded" && mmu.gate === gate;
@@ -259,8 +265,8 @@ function render() {
   const printing = PRINTING.includes((s.print_stats || {}).state);
   const drying = (mmu.drying_state || []).some((d) => d === "active" || d === "queued");
   const cycle = (mmu.drying || [])[0];
-  // A running cycle that rotates the spools shows the spools-out view
-  if (cycle && cycle.rotate && mode !== "out" && !modeTouched) return setMode("out");
+  // A running cycle that rotates only spools out shows the spools-out view
+  if (cycle && cycle.rotate && mode !== "out" && !modeTouched && driesOnlyEmptyGates(mmu)) return setMode("out");
 
   renderClimate(s, heater, env, drying, printHeat, cycle);
   autoPlanNow = renderGates(mmu, printing);
@@ -343,6 +349,7 @@ function setMode(next, byUser) {
   $("#modeLoaded").setAttribute("aria-pressed", String(mode === "loaded"));
   $("#modeOut").setAttribute("aria-pressed", String(mode === "out"));
   $("#outHelp").hidden = mode !== "out";
+  $("#turnRow").hidden = mode === "out";
   if (last) render();
 }
 
@@ -360,6 +367,8 @@ $("#dryForm").addEventListener("submit", (ev) => {
       $("#fTemp").focus();
       return showMsg($("#dryMsg"), "Unknown material for the spools out: enter a temperature", "halt");
     }
+  } else if ($("#fTurn").checked) {
+    parts.push("ROTATE=1");   // the filament parked in each gate moves back and returns
   }
   if (temp) parts.push("TEMP=" + Number(temp));
   if (hours) parts.push("TIMER=" + Math.round(Number(hours) * 60));
