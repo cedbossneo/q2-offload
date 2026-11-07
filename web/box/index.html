@@ -79,6 +79,13 @@ if (/[?&]embed\b/.test(location.search)) document.documentElement.classList.add(
           <span class="with-unit"><input id="fHours" type="number" min="0.5" max="48" step="0.5" inputmode="decimal" placeholder="auto"><i>h</i></span></label>
         <label class="field"><span>Stop at humidity</span>
           <span class="with-unit"><input id="fHum" type="number" min="5" max="80" step="1" inputmode="numeric"><i>%</i></span></label>
+        <label class="switch turn-switch" id="turnRow">
+          <input type="checkbox" role="switch" id="fTurn">
+          <span class="switch-track"></span>
+          <span><strong>Turn the spools</strong><small class="hint switch-hint">Every 5 minutes each
+            spool turns a little so it heats evenly: its filament moves back up to 30 cm, then returns.
+            Not while printing.</small></span>
+        </label>
         <div class="form-actions">
           <button type="submit" class="btn btn-heat" id="start" disabled><span data-icon="flame"></span>Start drying</button>
           <button type="button" class="btn btn-danger" id="stop" disabled><span data-icon="power"></span>Stop</button>
