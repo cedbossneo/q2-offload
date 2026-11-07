@@ -4,7 +4,7 @@
 # Klipper (host + MCU firmware are always built from this exact tree + patches/klipper)
 KLIPPER_REPO=https://github.com/Klipper3d/klipper.git
 KLIPPER_BRANCH=master
-KLIPPER_REF=0cee841e31d701595b3e509a0b502f6e320f52a8
+KLIPPER_REF=af81d23fec795ba64882d2206bc9cbc019e4501b
 
 # Happy Hare (MMU software for the Qidi Box) + patches/happy-hare. Follows its GitHub
 # releases (its main branch moves with every merge): HAPPY_HARE_REF is the release's commit.
@@ -45,8 +45,8 @@ SPOOLMAN_VERSION=v0.27.1
 # obico-server's release branch (x86_64 and arm64), pinned by digest. OBICO_SERVER_REF is the
 # commit it was built from; bump.sh moves both together.
 OBICO_ML_API_IMAGE=ghcr.io/thespaghettidetective/obico-ml-api-cpu
-OBICO_ML_API_DIGEST=sha256:e1b1c5b4cfc517ed884cad24e4a709d31b935ea49dab45ff60d31a62f4cb86ee
-OBICO_SERVER_REF=6f938964c63892df2b6d5b68d99ea783fc1a7c78
+OBICO_ML_API_DIGEST=sha256:6c4889750552907bc11ee4fb3c97a482d25dd074be7458b185461b82cc1dc7b3
+OBICO_SERVER_REF=df8190ef7500459599ebf398c3d1f653754792fd
 # Hosts with an Intel GPU run q2-offload's build of that same commit instead, on the GPU
 # (detect/ml-api/Containerfile.intel, built and published by CI).
 OBICO_SERVER_REPO=https://github.com/TheSpaghettiDetective/obico-server.git
