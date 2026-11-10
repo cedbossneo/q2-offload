@@ -23,18 +23,17 @@ for name in KLIPPER MOONRAKER KATAPULT AUTOPA TIMELAPSE MAINSAIL_CONFIG KIAUH; d
 done
 
 latest_release() {
-    curl -fsSL ${GITHUB_TOKEN:+-H "Authorization: Bearer ${GITHUB_TOKEN}"} \
-        "https://api.github.com/repos/$1/releases/latest" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])'
+    download "https://api.github.com/repos/$1/releases/latest" - \
+        ${GITHUB_TOKEN:+-H "Authorization: Bearer ${GITHUB_TOKEN}"} | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])'
 }
 
 # ghcr_index <image> <tag>: the tag's multi-arch index on GHCR, byte for byte (its sha256 is
 # the digest)
 ghcr_index() {
     local image="$1" tag="$2" token
-    token="$(curl -fsSL "https://ghcr.io/token?scope=repository:${image}:pull" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
-    curl -fsS -H "Authorization: Bearer ${token}" \
-        -H "Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json" \
-        "https://ghcr.io/v2/${image}/manifests/${tag}"
+    token="$(download "https://ghcr.io/token?scope=repository:${image}:pull" - | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')"
+    download "https://ghcr.io/v2/${image}/manifests/${tag}" - -H "Authorization: Bearer ${token}" \
+        -H "Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json"
 }
 
 # Only take a container release once its image is actually published

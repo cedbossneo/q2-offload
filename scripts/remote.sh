@@ -43,7 +43,7 @@ printer_push() {
     fi
     pssh "mkdir -p ${PRINTER_WORK}/firmware ${PRINTER_WORK}/deployer"
     tmp="$(mktemp -d)"
-    curl -fsSL "https://raw.githubusercontent.com/Arksine/katapult/${KATAPULT_REF}/scripts/flashtool.py" -o "${tmp}/flashtool.py"
+    download "https://raw.githubusercontent.com/Arksine/katapult/${KATAPULT_REF}/scripts/flashtool.py" "${tmp}/flashtool.py"
     scp -q "${SSH_OPTS[@]}" "${Q2_ROOT}/printer/q2-printer.sh" "${Q2_ROOT}/printer/q2_stock_reset.py" "${Q2_ROOT}/printer/q2-serial-proxy@.service" \
         "${tmp}/flashtool.py" "${PRINTER_USER}@${PRINTER_IP}:${PRINTER_WORK}/"
     rm -rf "$tmp"
@@ -136,7 +136,7 @@ printer_fetch_hid_flash() {
 printer_fetch_deployers() {
     local tmp
     tmp="$(mktemp -d)"
-    curl -fsSL "$DEPLOYER_URL" -o "${tmp}/deployer.tgz"
+    download "$DEPLOYER_URL" "${tmp}/deployer.tgz"
     echo "${DEPLOYER_SHA256}  ${tmp}/deployer.tgz" | sha256sum -c --quiet || die "deployer archive checksum mismatch"
     tar xzf "${tmp}/deployer.tgz" -C "$tmp"
     # The archive is read-only, its top directory too: without this the copies on the
