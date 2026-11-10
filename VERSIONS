@@ -4,7 +4,7 @@
 # Klipper (host + MCU firmware are always built from this exact tree + patches/klipper)
 KLIPPER_REPO=https://github.com/Klipper3d/klipper.git
 KLIPPER_BRANCH=master
-KLIPPER_REF=282db764dc568841837f68af3964762189d2baee
+KLIPPER_REF=56a9c605e121c6560f5c8b6c0e33bdda86de69a1
 
 # Happy Hare (MMU software for the Qidi Box) + patches/happy-hare. Follows its GitHub
 # releases (its main branch moves with every merge): HAPPY_HARE_REF is the release's commit.
