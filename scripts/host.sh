@@ -196,7 +196,7 @@ host_extensions() {
     ln -sfn "${HOME}/moonraker-timelapse/klipper_macro/timelapse.cfg" "${CFG}/timelapse.cfg"
     ln -sfn "${HOME}/mainsail-config/mainsail.cfg" "${CFG}/mainsail.cfg"
     tmp="$(mktemp)"
-    curl -fsSL "https://raw.githubusercontent.com/dw-0/kiauh/${KIAUH_REF}/kiauh/extensions/gcode_shell_cmd/assets/gcode_shell_command.py" -o "$tmp"
+    download "https://raw.githubusercontent.com/dw-0/kiauh/${KIAUH_REF}/kiauh/extensions/gcode_shell_cmd/assets/gcode_shell_command.py" "$tmp"
     install -m 644 "$tmp" "${HOME}/klipper/klippy/extras/gcode_shell_command.py"
     rm -f "$tmp"
     install -m 644 "${Q2_ROOT}/host/extras/qidi_box_compat.py" "${HOME}/klipper/klippy/extras/qidi_box_compat.py"
@@ -410,7 +410,7 @@ host_autopa() {
 web_client() {
     local name="$1" repo="$2" version="$3" tmp
     tmp="$(mktemp -d)"
-    curl -fsSL "https://github.com/${repo}/releases/download/${version}/${name}.zip" -o "${tmp}/${name}.zip"
+    download "https://github.com/${repo}/releases/download/${version}/${name}.zip" "${tmp}/${name}.zip"
     rm -rf "${HOME:?}/${name}.new" && mkdir -p "${HOME}/${name}.new"
     unzip -q "${tmp}/${name}.zip" -d "${HOME}/${name}.new"
     # Keep Mainsail's config.json across updates
@@ -687,7 +687,7 @@ host_firmware() {
         info "Downloading firmware ${id}"
         local base="https://github.com/${Q2_GITHUB_REPO}/releases/download/fw-${id}"
         for f in SHA256SUMS BUILD_INFO q2-main.bin q2-thr.bin q2-box.bin q2-main.dict q2-thr.dict q2-box.dict; do
-            curl -fsSL "${base}/${f}" -o "${dir}/${f}" \
+            download "${base}/${f}" "${dir}/${f}" \
                 || die "firmware fw-${id} is not published (yet). Re-run with --build-firmware to build it here."
         done
     fi

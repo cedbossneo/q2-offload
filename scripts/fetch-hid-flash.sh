@@ -11,7 +11,7 @@ Q2_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 out="${1:?output file}"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-curl -fsSL --retry 3 "$HID_FLASH_URL" -o "${tmp}/firmware.zip"
+download "$HID_FLASH_URL" "${tmp}/firmware.zip"
 unzip -q "${tmp}/firmware.zip" "$HID_FLASH_PACKAGE" -d "$tmp"
 dpkg-deb --fsys-tarfile "${tmp}/${HID_FLASH_PACKAGE}" | tar -xO ./home/mks/hid-flash > "${tmp}/hid-flash"
 echo "${HID_FLASH_SHA256}  ${tmp}/hid-flash" | sha256sum -c --quiet || die "hid-flash checksum mismatch"

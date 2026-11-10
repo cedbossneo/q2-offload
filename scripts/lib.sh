@@ -35,6 +35,19 @@ confirm_phrase() {
     [ "$reply" = "$phrase" ] || die "Confirmation did not match, nothing was done"
 }
 
+# download <url> <file|-> [curl options...]: curl with retries, so one GitHub 5xx or timeout
+# does not fail an install or the daily upstream update. "-" writes to stdout. Errors that
+# are not transient (404) fail at once.
+DOWNLOAD_RETRIES=5
+DOWNLOAD_RETRY_DELAY=10
+DOWNLOAD_CONNECT_TIMEOUT=20
+download() {
+    local url="$1" out="$2"
+    shift 2
+    curl -fsSL --retry "$DOWNLOAD_RETRIES" --retry-delay "$DOWNLOAD_RETRY_DELAY" \
+        --connect-timeout "$DOWNLOAD_CONNECT_TIMEOUT" "$@" -o "$out" "$url"
+}
+
 # checkout_ref <repo-url> <ref> <dir>: clone if needed, then detach at <ref>.
 # A clone left by another install (a fork, a single-branch or shallow clone) may not have
 # <ref> ("fatal: unable to read tree"): its origin is pointed at <repo-url> and <ref> is
