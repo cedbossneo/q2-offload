@@ -59,6 +59,6 @@ the end of the print, but a drying cycle that was running finishes.
 - The heater runs at full power and regulates on the air sensor, like the stock firmware, so
   its elements run much hotter than the air while it warms up (above 90 °C, then about 60 °C).
   As in stock, only their Klipper `max_temp` (130 °C) watches them.
-- The time left needs Happy Hare patch 0003 (`printer.mmu.drying`), installed by q2-offload.
+- The time left comes from `printer.mmu.drying` (Happy Hare #1507).
 
 </details>

@@ -41,3 +41,17 @@ A new filament also gets an offer to [measure its pressure advance](pressure-adv
 `MMU_NFC_SCAN GATE=n` turns the spool a full revolution to look for a tag the preload missed.
 
 </details>
+
+## When a spool runs out
+
+Like the stock firmware, the print carries on with the filament left in the tube, about 90 cm.
+When its end reaches the toolhead, the printer moves over the chute and pushes the rest out
+through the nozzle:
+
+- **Another gate holds the same filament** (an EndlessSpool group): the printer loads it and
+  goes on printing.
+- **Otherwise** the print pauses with the path clear. Put a new spool in the gate, load the
+  tool (`MMU_CHANGE_TOOL TOOL=n`), then resume.
+
+A tool change before the end reaches the toolhead also pushes the rest out through the nozzle,
+instead of cutting it: once its end is past the Box gear, nothing could pull it back.

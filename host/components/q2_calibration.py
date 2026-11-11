@@ -1,10 +1,10 @@
 # q2-offload: pressure advance calibration of a spool created from an NFC tag.
 #
-# Happy Hare calls _MMU_EVENT EVENT=spool_created (patch 0006) when a scanned tag creates a
+# Happy Hare calls _MMU_EVENT EVENT=spool_created (Happy Hare #1504) when a scanned tag creates a
 # Spoolman spool, and q2_pa_calibrate.cfg forwards it here. If the spool's filament has no
 # pressure advance yet, this component works out the settings the slicer prints it with (the
 # same OrcaSlicer preset scripts/orca-spool-presets.py generates: the filament's temperature,
-# from SpoolmanDB when the tag matched it (patch 0007), and its flow ratio) and asks Klipper to
+# from SpoolmanDB when the tag matched it (Happy Hare #1505), and its flow ratio) and asks Klipper to
 # offer a calibration (_SPOOL_PA_OFFER). After a valid measurement, Klipper calls q2_pa_store and
 # the value goes to the filament in Spoolman, where the next spool of that filament and the
 # OrcaSlicer presets pick it up.
