@@ -9,7 +9,7 @@ description: What is in the repository, how releases work, and where things live
 |---|---|
 | `VERSIONS` | every upstream version used, pinned |
 | `patches/klipper/` | Q2 support on mainline Klipper: GD32F425 USB fix, 200 MHz mainboard, 120 MHz toolhead, toolhead SPI2, MCU temperature, multi-MCU probing timeout, timing tweaks |
-| `patches/happy-hare/` | changes not yet merged in Happy Hare (drying status, spool rotation, the spool-created event, SpoolmanDB for any brand…); each is dropped once upstream has it |
+| `patches/happy-hare/` | changes not yet merged in Happy Hare (turning loaded spools while drying, printing the filament left after a runout); each is dropped once upstream has it |
 | `firmware/configs/` | Klipper build configs for the three boards |
 | `config/klipper/` | Klipper configuration and macros for the Q2 |
 | `config/happy-hare/` | Happy Hare menuconfig for the Qidi Box and Q2, and the settings applied on top of it (`overrides.cfg`) |

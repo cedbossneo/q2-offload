@@ -1,7 +1,7 @@
-From a4ffa32c9876d34a655b1954eacdb3e107639ef7 Mon Sep 17 00:00:00 2001
+From 446d5b61c45c500d46e0a47791a56434f497aa88 Mon Sep 17 00:00:00 2001
 From: Cedric Hauber <hauber.c@gmail.com>
 Date: Wed, 11 Nov 2026 14:08:34 +0100
-Subject: [PATCH] feat(runout): print the filament left in the path after a
+Subject: [PATCH 9/9] feat(runout): print the filament left in the path after a
  spool runout
 
 On a type-B MMU whose entry sensor sits before the gear (QIDI Box), a runout paused as
@@ -29,21 +29,21 @@ moving forward.
  extras/mmu/commands/mmu_sensor_runout.py |  17 ++
  extras/mmu/mmu_constants.py              |   1 +
  extras/mmu/mmu_controller.py             |  82 +++++++-
- extras/mmu/mmu_filament_movement.py      |  67 +++++++
+ extras/mmu/mmu_filament_movement.py      |  69 +++++++
  extras/mmu/mmu_machine_parameters.py     |   1 +
  test/hh/filament.py                      |   8 +-
  test/test_mmu_runout_remaining.py        | 228 +++++++++++++++++++++++
- 8 files changed, 403 insertions(+), 7 deletions(-)
+ 8 files changed, 405 insertions(+), 7 deletions(-)
  create mode 100644 test/test_mmu_runout_remaining.py
 
 diff --git a/config/base/mmu.cfg b/config/base/mmu.cfg
-index 16d10804..4219dd1a 100644
+index 7e7f5957..f3f8a837 100644
 --- a/config/base/mmu.cfg
 +++ b/config/base/mmu.cfg
-@@ -198,10 +198,16 @@ purge_change_min_volume      : [[PARAM_PURGE_CHANGE_MIN_VOLUME]]	# Minimum purge
- #   designs (with linear selector) it can also be configured to eject filament remains to a designated gate rather than
- #   defaulting to current gate. A custom gate will disable mmu entry runout detection for EndlessSpool because filament
- #   end must completely pass through the gate for selector to move
+@@ -200,11 +200,17 @@ purge_change_min_volume      : [[PARAM_PURGE_CHANGE_MIN_VOLUME]]	# Minimum purge
+ #   end must completely pass through the gate for selector to move. With 'endless_spool_auto_groups' the groups are
+ #   built from the gate map: gates with the same material and color (alpha ignored) back each other up. They are
+ #   rebuilt whenever the gate map changes and MMU_ENDLESS_SPOOL GROUPS= is ignored
 +# - 'runout_use_remaining' keeps printing when a spool runs out (mmu entry sensor) with the filament left in the path,
 +#   instead of pausing to unload it. The runout is then the end clearing the extruder entry sensor: what is left is
 +#   pushed out through the nozzle, then EndlessSpool loads the next gate or the print pauses. A toolchange in between
@@ -53,6 +53,7 @@ index 16d10804..4219dd1a 100644
  endless_spool_enabled    : [[PARAM_ENDLESS_SPOOL_ENABLED]]		# 0 = disable, 1 = enable endless spool
  endless_spool_on_load    : [[PARAM_ENDLESS_SPOOL_ON_LOAD]]		# 0 = don't apply endless spool on load, 1 = run endless spool if gate is empty
  endless_spool_eject_gate : -1		# Which gate to eject the filament remains. -1 = current gate
+ endless_spool_auto_groups: [[PARAM_ENDLESS_SPOOL_AUTO_GROUPS]]		# 0 = groups set with MMU_ENDLESS_SPOOL GROUPS=, 1 = groups from gate map material and color
 +runout_use_remaining     : 0		# 1 = print the filament left in the path after a spool runout, then push its end out through the nozzle
  #
  # Spoolman support requires you to correctly enable spoolman with moonraker first. If enabled, the gate SpoolId will
@@ -109,7 +110,7 @@ index 69b331ab..ec38f32d 100644
                      # Undo what runout sensor handling did
                      mmu.pause_resume.send_resume_command()
 diff --git a/extras/mmu/mmu_constants.py b/extras/mmu/mmu_constants.py
-index 9d5d1e39..e543b5d7 100644
+index 2faee5dd..a5492b45 100644
 --- a/extras/mmu/mmu_constants.py
 +++ b/extras/mmu/mmu_constants.py
 @@ -129,6 +129,7 @@ TOOLHEAD_UNLOAD_TEST_WARN = 1     # Also check unload homing distance, warn on f
@@ -121,10 +122,10 @@ index 9d5d1e39..e543b5d7 100644
  ACTION_IDLE = 0
  ACTION_LOADING = 1
 diff --git a/extras/mmu/mmu_controller.py b/extras/mmu/mmu_controller.py
-index f6076a2b..6bbcaab2 100644
+index a77bc54b..5cc6e757 100644
 --- a/extras/mmu/mmu_controller.py
 +++ b/extras/mmu/mmu_controller.py
-@@ -2783,7 +2783,8 @@ class MmuController(MmuFilamentMovement):
+@@ -2760,7 +2760,8 @@ class MmuController(MmuFilamentMovement):
          if self.is_printing(force_in_print):
              # Only where filament should reach the nozzle: a completed load, or an interrupted toolchange/load
              if operation != 'unload' and (self.filament_pos == FILAMENT_POS_LOADED or self._next_tool != TOOL_GATE_UNKNOWN):
@@ -134,7 +135,7 @@ index f6076a2b..6bbcaab2 100644
                  if self._next_tool != TOOL_GATE_UNKNOWN:
                      self._print_toolchange_done = True # Pending toolchange is confirmed, later ones are the slicer's
              self.is_handling_runout = False
-@@ -2976,7 +2977,10 @@ class MmuController(MmuFilamentMovement):
+@@ -2953,7 +2954,10 @@ class MmuController(MmuFilamentMovement):
          between units (e.g. an encoder) ends up armed for the selected unit.
          """
          eventtime = self.reactor.monotonic() if eventtime is None else eventtime
@@ -146,7 +147,7 @@ index f6076a2b..6bbcaab2 100644
  
          for unit in self.mmu_machine.units:
              if unit is not active_unit:
-@@ -4521,9 +4525,7 @@ class MmuController(MmuFilamentMovement):
+@@ -4500,9 +4504,7 @@ class MmuController(MmuFilamentMovement):
                              self.select_gate(self.p.endless_spool_eject_gate)
                          self._unload_tool(form_tip=FORM_TIP_STANDALONE)
                          self._eject_from_gate() # Push completely out of gate
@@ -157,7 +158,7 @@ index f6076a2b..6bbcaab2 100644
                      except (MmuError, self.printer.command_error) as e:
                          ee = self.mmu_error_from(e)
                          raise ee.with_context("Occurred during EndlessSpool swap of %s to gate %d" % (where, next_gate)) from e
-@@ -4549,6 +4551,76 @@ class MmuController(MmuFilamentMovement):
+@@ -4528,6 +4530,76 @@ class MmuController(MmuFilamentMovement):
              raise MmuError(reason, hint=hint)
  
  
@@ -235,10 +236,10 @@ index f6076a2b..6bbcaab2 100644
      def movequeue_wait(self):
          self.toolhead.wait_moves()
 diff --git a/extras/mmu/mmu_filament_movement.py b/extras/mmu/mmu_filament_movement.py
-index 618083cc..e6b3ce26 100644
+index 74f02b1c..77581744 100644
 --- a/extras/mmu/mmu_filament_movement.py
 +++ b/extras/mmu/mmu_filament_movement.py
-@@ -2914,6 +2914,14 @@ class MmuFilamentMovement:
+@@ -2917,6 +2917,14 @@ class MmuFilamentMovement:
              if not extruder_only:
                  self._display_visual_state()
  
@@ -253,7 +254,7 @@ index 618083cc..e6b3ce26 100644
              # Tip forming ---------------------------------
              synced_extruder_unload = False
              park_pos = 0.
-@@ -3108,6 +3116,60 @@ class MmuFilamentMovement:
+@@ -3111,6 +3119,62 @@ class MmuFilamentMovement:
  # TIP FORMING AND PURGING
  # -----------------------------------------------------------------------------------------------------------
  
@@ -302,9 +303,11 @@ index 618083cc..e6b3ce26 100644
 +                wait=True,
 +            )
 +
-+        fragment = max(0., toolhead.toolhead_extruder_to_nozzle - RUNOUT_REMAINS_GEAR_CLEARANCE)
++        # Like a cut fragment, excluding the calibrated residual
++        fragment = max(0., toolhead.toolhead_extruder_to_nozzle - RUNOUT_REMAINS_GEAR_CLEARANCE
++                       - toolhead.toolhead_residual_filament)
 +        color = self.gate_color[self.gate_selected] if self.gate_selected >= 0 else UNKNOWN_FILAMENT_COLOR
-+        u.extruder_wrapper.set_filament_remaining(fragment, color)
++        u.extruder_wrapper.set_filament_cut_fragment(fragment, color)
 +        self.set_filament_pos_state(FILAMENT_POS_UNLOADED)
 +        self.log_info("Run-out filament pushed out after %.1fmm, %.1fmm left in the toolhead (purged on next load)"
 +                      % (actual, fragment))
@@ -314,7 +317,7 @@ index 618083cc..e6b3ce26 100644
      def form_tip_standalone(self, extruder_only=False):
          """
          Form tip prior to extraction from the extruder. This can take the form of shaping the filament or could simply
-@@ -3951,6 +4013,11 @@ class MmuFilamentMovement:
+@@ -3954,6 +4018,11 @@ class MmuFilamentMovement:
                      self.log_info("Proportional sensor indicates no extruder grip - filament may not be fully loaded")
                      self.set_filament_pos_state(FILAMENT_POS_IN_BOWDEN, silent=silent)
  
@@ -327,13 +330,13 @@ index 618083cc..e6b3ce26 100644
          # triggered level proves filament reached the entrance but cannot distinguish
          # that point from filament extending through the extruder to the nozzle. Recover
 diff --git a/extras/mmu/mmu_machine_parameters.py b/extras/mmu/mmu_machine_parameters.py
-index 8dde226e..6d0bd105 100644
+index d0e071e7..9f69459e 100644
 --- a/extras/mmu/mmu_machine_parameters.py
 +++ b/extras/mmu/mmu_machine_parameters.py
-@@ -135,6 +135,7 @@ class MmuMachineParameters(TunableParametersBase):
-         ParamSpec('endless_spool_enabled',         'int',      0, section="FEATURES", limits=dict(minval=0, maxval=1)),
+@@ -141,6 +141,7 @@ class MmuMachineParameters(TunableParametersBase):
          ParamSpec('endless_spool_on_load',         'int',      0, section="FEATURES", limits=dict(minval=0, maxval=1)),
          ParamSpec('endless_spool_eject_gate',      'int',     -1, section="FEATURES", limits=dict(minval=-1)),
+         ParamSpec('endless_spool_auto_groups',     'int',      0, section="FEATURES", limits=dict(minval=0, maxval=1), on_change=_on_endless_spool_auto_groups),
 +        ParamSpec('runout_use_remaining',          'int',      0, section="FEATURES", limits=dict(minval=0, maxval=1)),
          ParamSpec('bypass_autoload',               'int',      1, section="FEATURES", guard=_guard_has_sensor(SENSOR_EXTRUDER_ENTRY), limits=dict(minval=0, maxval=1)),
  
@@ -360,7 +363,7 @@ index e4c3b4c2..e244699e 100644
                  travel = start - position + 1e-6
 diff --git a/test/test_mmu_runout_remaining.py b/test/test_mmu_runout_remaining.py
 new file mode 100644
-index 00000000..4fbad6e6
+index 00000000..9855391d
 --- /dev/null
 +++ b/test/test_mmu_runout_remaining.py
 @@ -0,0 +1,228 @@
@@ -517,7 +520,7 @@ index 00000000..4fbad6e6
 +        tetn = self.mmu.mmu_unit().toolhead_wrapper.p.toolhead_extruder_to_nozzle
 +        tete = self.mmu.mmu_unit().toolhead_wrapper.p.toolhead_entry_to_extruder
 +        self.assertGreater(self.fil.tail[gate], EXTRUDER_ENTRY + tete)
-+        remaining = self.mmu.mmu_unit().extruder_wrapper.filament_remaining
++        remaining = self.mmu.mmu_unit().extruder_wrapper.filament_cut_fragment
 +        self.assertGreater(remaining, 0.)
 +        self.assertLess(remaining, tetn)
 +

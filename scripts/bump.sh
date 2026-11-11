@@ -56,9 +56,22 @@ tag_commit() {
     git ls-remote "$1" "refs/tags/$2" "refs/tags/$2^{}" | sort -k2 | tail -1 | cut -f1
 }
 
+# release_contains <owner/repo> <release commit> <commit>: the release has that commit
+release_contains() {
+    local status
+    status="$(download "https://api.github.com/repos/$1/compare/$3...$2" - \
+        ${GITHUB_TOKEN:+-H "Authorization: Bearer ${GITHUB_TOKEN}"} \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')"
+    [ "$status" = identical ] || [ "$status" = ahead ]
+}
+
+# Happy Hare: a commit pinned ahead of the latest release stays until a release contains it
 v="$(latest_release moggieuk/Happy-Hare)"
-set_var HAPPY_HARE_RELEASE "$v"
-set_var HAPPY_HARE_REF "$(tag_commit "$HAPPY_HARE_REPO" "$v")"
+ref="$(tag_commit "$HAPPY_HARE_REPO" "$v")"
+if release_contains moggieuk/Happy-Hare "$ref" "$(sed -n 's/^HAPPY_HARE_REF=//p' "$file")"; then
+    set_var HAPPY_HARE_RELEASE "$v"
+    set_var HAPPY_HARE_REF "$ref"
+fi
 set_var MAINSAIL_VERSION "$(latest_release mainsail-crew/mainsail)"
 set_var FLUIDD_VERSION "$(latest_release fluidd-core/fluidd)"
 v="$(latest_release Donkie/Spoolman)"

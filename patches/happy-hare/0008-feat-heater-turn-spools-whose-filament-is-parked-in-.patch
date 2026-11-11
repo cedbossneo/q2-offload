@@ -1,7 +1,7 @@
-From 8d086207c6323e1175ab5577dcee19493cbc819c Mon Sep 17 00:00:00 2001
+From 6bde233aa7ed7360a85a8eee985e4cd48b314f18 Mon Sep 17 00:00:00 2001
 From: Cedric Hauber <hauber.c@gmail.com>
 Date: Sat, 7 Nov 2026 11:47:37 +0100
-Subject: [PATCH] feat(heater): turn spools whose filament is parked in the
+Subject: [PATCH 8/9] feat(heater): turn spools whose filament is parked in the
  gate while drying
 
 A gear that turns the spool (gear_rotates_spool) only rotated empty gates: retracting a
@@ -29,13 +29,13 @@ Default 0: only empty gates turn, as before.
  7 files changed, 255 insertions(+), 3 deletions(-)
 
 diff --git a/config/base/mmu_parameters.cfg b/config/base/mmu_parameters.cfg
-index 07cf9308..aa6a4904 100644
+index 647ed005..7fee373b 100644
 --- a/config/base/mmu_parameters.cfg
 +++ b/config/base/mmu_parameters.cfg
-@@ -535,6 +535,7 @@ heater_rotate_interval      : [[PARAM_HEATER_ROTATE_INTERVAL]]			# Interval in m
+@@ -534,6 +534,7 @@ heater_rotate_interval      : [[PARAM_HEATER_ROTATE_INTERVAL]]			# Interval in m
  [% if MMU_GEAR_ROTATES_SPOOL %]
- heater_rotate_distance      : 100			# Gear retract (mm) that turns each spool at every rotation
- heater_rotate_speed         : 0			# Speed (mm/s) of that retract, 0 = default gear speed
+ heater_rotate_distance      : [[PARAM_HEATER_ROTATE_DISTANCE]]			# Gear retract (mm) that turns each spool at every rotation
+ heater_rotate_speed         : [[PARAM_HEATER_ROTATE_SPEED]]			# Speed (mm/s) of that retract, 0 = default gear speed
 +heater_rotate_loaded_travel : 0			# Also turn spools whose filament is parked in the gate: back and forth up to this far (mm) behind the park, never forward. 0 = only empty gates. Must stay within the gear's hold
  [% endif %]
  [% endif %]
@@ -62,10 +62,10 @@ index ac3536a3..38a83e04 100644
                  warnings, info = em.start_drying_cycle(
                      gates,
 diff --git a/extras/mmu/mmu_constants.py b/extras/mmu/mmu_constants.py
-index 5b20c618..9d5d1e39 100644
+index 57e55bfe..2faee5dd 100644
 --- a/extras/mmu/mmu_constants.py
 +++ b/extras/mmu/mmu_constants.py
-@@ -318,6 +318,7 @@ VARS_MMU_ENCODER_CLOG_LENGTH       = "mmu_encoder_clog_length"
+@@ -335,6 +335,7 @@ VARS_MMU_ENCODER_CLOG_LENGTH       = "mmu_encoder_clog_length"
  VARS_MMU_GATE_STATISTICS_PREFIX    = "mmu_statistics_gate_"
  VARS_MMU_GEAR_ROTATION_DISTANCES   = "mmu_gear_rotation_distances"
  VARS_MMU_BOWDEN_LENGTHS            = "mmu_bowden_lengths"             # Per-gate calibrated bowden lengths
@@ -74,7 +74,7 @@ index 5b20c618..9d5d1e39 100644
  
  # Per-unit selector
 diff --git a/extras/mmu/mmu_filament_movement.py b/extras/mmu/mmu_filament_movement.py
-index 47ee4ea1..618083cc 100644
+index 6cfde2db..74f02b1c 100644
 --- a/extras/mmu/mmu_filament_movement.py
 +++ b/extras/mmu/mmu_filament_movement.py
 @@ -95,6 +95,7 @@ class MmuFilamentMovement:
@@ -86,10 +86,10 @@ index 47ee4ea1..618083cc 100644
              FILAMENT_POS_HOMED_ENTRY
              if (
 diff --git a/extras/mmu/unit/mmu_environment_manager.py b/extras/mmu/unit/mmu_environment_manager.py
-index bfeea24c..f9544a1a 100644
+index a12ed66b..ccbd6e0b 100644
 --- a/extras/mmu/unit/mmu_environment_manager.py
 +++ b/extras/mmu/unit/mmu_environment_manager.py
-@@ -97,6 +97,12 @@ class MmuEnvironmentManager:
+@@ -96,6 +96,12 @@ class MmuEnvironmentManager:
          self._vent_gates = []        # Gates whose servos were opened (all gates if not per-gate)
          self._vent_fan_restore = []  # (gate or None, mode) pairs to restore when the vent closes
  
@@ -102,7 +102,7 @@ index bfeea24c..f9544a1a 100644
          self.reinit()
  
          # Register event handlers
-@@ -137,6 +143,13 @@ class MmuEnvironmentManager:
+@@ -136,6 +142,13 @@ class MmuEnvironmentManager:
  
  
      def _handle_ready(self):
@@ -116,7 +116,7 @@ index bfeea24c..f9544a1a 100644
          # Close vent servos in case Klipper restarted while a vent was open
          if self.mmu_unit.has_vent_servo():
              self.reactor.register_callback(
-@@ -485,7 +498,8 @@ class MmuEnvironmentManager:
+@@ -501,7 +514,8 @@ class MmuEnvironmentManager:
          """
          Event indicating that the MMU unit was disabled
          """
@@ -126,7 +126,7 @@ index bfeea24c..f9544a1a 100644
          self._heater_off()
          self.spools_to_rotate = []
  
-@@ -659,6 +673,10 @@ class MmuEnvironmentManager:
+@@ -675,6 +689,10 @@ class MmuEnvironmentManager:
                  if gates_to_rotate:
                      self._rotate_spools_in_gates(gates_to_rotate)
  
@@ -137,7 +137,7 @@ index bfeea24c..f9544a1a 100644
                  self._rotate_timer = self._drying_rotate_interval * 60.0 # To seconds
  
          # Reschedule
-@@ -875,7 +893,7 @@ class MmuEnvironmentManager:
+@@ -891,7 +909,7 @@ class MmuEnvironmentManager:
          return "Drying temperature limited to %.1f°C, %s" % (self._drying_temp_cap, self._drying_cap_reason)
  
  
@@ -146,7 +146,7 @@ index bfeea24c..f9544a1a 100644
          if self.is_drying() or self._drying_end_time is not None:
              self.mmu.log_info(msg)
              self._vent_close()
-@@ -902,6 +920,8 @@ class MmuEnvironmentManager:
+@@ -918,6 +936,8 @@ class MmuEnvironmentManager:
              self._rotate_timer = None
              self._rotate_enabled = False
              self._bg_rotate_gates = []
@@ -155,7 +155,7 @@ index bfeea24c..f9544a1a 100644
  
  
      #
-@@ -1358,6 +1378,111 @@ class MmuEnvironmentManager:
+@@ -1376,6 +1396,111 @@ class MmuEnvironmentManager:
          return accel * (t / 2.) ** 2
  
  
@@ -280,7 +280,7 @@ index ca850480..836ce3de 100644
          ParamSpec('heater_pause_temp',                'float',  -1.0, section="HEATER",    limits=dict(minval=-1.0), guard=_guard_has_heater, fmt="%.1f"),
          ParamSpec('heater_vent_duration',             'float',  10.0, section="HEATER",    limits=dict(above=0.0),  guard=_guard_has_heater, fmt="%.1f"),
 diff --git a/test/test_mmu_drying.py b/test/test_mmu_drying.py
-index d9635f51..cae4f6cc 100644
+index d8a8e9a5..a2ca0532 100644
 --- a/test/test_mmu_drying.py
 +++ b/test/test_mmu_drying.py
 @@ -12,6 +12,8 @@ from test.hh import profiles, session
@@ -292,7 +292,7 @@ index d9635f51..cae4f6cc 100644
  
  
  class _FakeHumidityChip:
-@@ -718,5 +720,121 @@ class TestDryingRotation(unittest.TestCase):
+@@ -826,5 +828,121 @@ class TestDryingRotation(unittest.TestCase):
          self.assertEqual(self.moves, [(0, -50.0, 80.0), (1, -50.0, 80.0)])
  
  
