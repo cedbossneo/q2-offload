@@ -4,7 +4,7 @@
 # Klipper (host + MCU firmware are always built from this exact tree + patches/klipper)
 KLIPPER_REPO=https://github.com/Klipper3d/klipper.git
 KLIPPER_BRANCH=master
-KLIPPER_REF=56a9c605e121c6560f5c8b6c0e33bdda86de69a1
+KLIPPER_REF=29d4ec2d6d840ee839333306003a400da186d41d
 
 # Happy Hare (MMU software for the Qidi Box) + patches/happy-hare. Follows its GitHub
 # releases (its main branch moves with every merge): HAPPY_HARE_REF is the release's commit.
@@ -36,7 +36,7 @@ MAINSAIL_CONFIG_REF=ff3869a621db17ce3ef660adbbd3fa321995ac42
 # gcode_shell_command.py (KIAUH extension) used by the power-loss-recovery macros
 KIAUH_REPO=https://github.com/dw-0/kiauh.git
 KIAUH_BRANCH=master
-KIAUH_REF=485b7bc7bf7627cc528245b6a2a0856e0c1a05f8
+KIAUH_REF=8f5b21280c1e6be6963a7add63484a35c49d8d94
 
 MAINSAIL_VERSION=v2.19.0
 FLUIDD_VERSION=v1.37.7
