@@ -1,0 +1,597 @@
+From a4ffa32c9876d34a655b1954eacdb3e107639ef7 Mon Sep 17 00:00:00 2001
+From: Cedric Hauber <hauber.c@gmail.com>
+Date: Wed, 11 Nov 2026 14:08:34 +0100
+Subject: [PATCH] feat(runout): print the filament left in the path after a
+ spool runout
+
+On a type-B MMU whose entry sensor sits before the gear (QIDI Box), a runout paused as
+soon as the end of the filament cleared the entry sensor, then unloaded it with the gear.
+By then the end may already be past the gear: the unload cut the filament and nothing
+could pull the rest back, so it stayed in the bowden.
+
+With runout_use_remaining the print goes on with what is left in the path, like the QIDI
+stock firmware. The runout is the end clearing the extruder entry sensor: the toolhead
+parks for the runout, the rest is pushed out through the nozzle (past the extruder gears,
+the piece below is left for the next load like a cut fragment), then EndlessSpool loads
+the next gate or the print pauses until the tool is loaded again. A toolchange or unload
+in the meantime pushes the remains out the same way, without cutting: a cutter above
+the extruder gears would leave the upper piece with nothing to move it.
+
+The state is read from the sensors (loaded, gate entry sensor clear), so it holds after a
+restart or once the print has ended. While it lasts FlowGuard is off, the shared exit
+runout is ignored, and the loaded check and pause recovery accept the empty gate and hub.
+Needs mmu entry and extruder entry sensors and no encoder. Default 0: unchanged.
+
+The test filament model now opens a switch when the end of a run-out filament passes it
+moving forward.
+---
+ config/base/mmu.cfg                      |   6 +
+ extras/mmu/commands/mmu_sensor_runout.py |  17 ++
+ extras/mmu/mmu_constants.py              |   1 +
+ extras/mmu/mmu_controller.py             |  82 +++++++-
+ extras/mmu/mmu_filament_movement.py      |  67 +++++++
+ extras/mmu/mmu_machine_parameters.py     |   1 +
+ test/hh/filament.py                      |   8 +-
+ test/test_mmu_runout_remaining.py        | 228 +++++++++++++++++++++++
+ 8 files changed, 403 insertions(+), 7 deletions(-)
+ create mode 100644 test/test_mmu_runout_remaining.py
+
+diff --git a/config/base/mmu.cfg b/config/base/mmu.cfg
+index 16d10804..4219dd1a 100644
+--- a/config/base/mmu.cfg
++++ b/config/base/mmu.cfg
+@@ -198,10 +198,16 @@ purge_change_min_volume      : [[PARAM_PURGE_CHANGE_MIN_VOLUME]]	# Minimum purge
+ #   designs (with linear selector) it can also be configured to eject filament remains to a designated gate rather than
+ #   defaulting to current gate. A custom gate will disable mmu entry runout detection for EndlessSpool because filament
+ #   end must completely pass through the gate for selector to move
++# - 'runout_use_remaining' keeps printing when a spool runs out (mmu entry sensor) with the filament left in the path,
++#   instead of pausing to unload it. The runout is then the end clearing the extruder entry sensor: what is left is
++#   pushed out through the nozzle, then EndlessSpool loads the next gate or the print pauses. A toolchange in between
++#   also pushes the remains out through the nozzle. For MMUs whose gear cannot pull back a filament end that has
++#   passed it (QIDI Box). Needs mmu entry and extruder entry sensors, no encoder
+ #
+ endless_spool_enabled    : [[PARAM_ENDLESS_SPOOL_ENABLED]]		# 0 = disable, 1 = enable endless spool
+ endless_spool_on_load    : [[PARAM_ENDLESS_SPOOL_ON_LOAD]]		# 0 = don't apply endless spool on load, 1 = run endless spool if gate is empty
+ endless_spool_eject_gate : -1		# Which gate to eject the filament remains. -1 = current gate
++runout_use_remaining     : 0		# 1 = print the filament left in the path after a spool runout, then push its end out through the nozzle
+ #
+ # Spoolman support requires you to correctly enable spoolman with moonraker first. If enabled, the gate SpoolId will
+ # be used to load filament details and color from the spoolman database and Happy Hare will activate/deactivate
+diff --git a/extras/mmu/commands/mmu_sensor_runout.py b/extras/mmu/commands/mmu_sensor_runout.py
+index 69b331ab..ec38f32d 100644
+--- a/extras/mmu/commands/mmu_sensor_runout.py
++++ b/extras/mmu/commands/mmu_sensor_runout.py
+@@ -71,6 +71,7 @@ class MmuSensorRunoutCommand(BaseCommand):
+         raw_sensor = gcmd.get('SENSOR', "")
+         sensor = mmu.sensor_manager.get_unprefixed_sensor_name(raw_sensor)
+         process_runout = False
++        remains_printed = False
+ 
+         # Delivery is slow by design: the handler blocks on the gcode mutex, so an event can arrive
+         # long after it was raised. Only drop it if it was raised before a runout we already handled,
+@@ -125,15 +126,28 @@ class MmuSensorRunoutCommand(BaseCommand):
+                                 "Ignoring filament runout detected by %s because endless_spool_eject_gate is active on that gate"
+                                 % raw_sensor
+                             )
++                        elif mmu.is_printing_runout_remains():
++                            mmu.log_info(
++                                "Spool on %s ran out. Printing the filament left in the path before handling the runout"
++                                % mmu.gate_name()
++                            )
++                            mmu._apply_flowguard_scope() # The end passing the buffer must not trip FlowGuard
+                         else:
+                             process_runout = True
+ 
++                    # The end of a run-out filament on its way to the extruder (runout_use_remaining)
++                    elif (sensor == SENSOR_SHARED_EXIT or sensor.startswith(SENSOR_EXIT_PREFIX)) and mmu.is_printing_runout_remains():
++                        mmu.log_debug("End of the run-out filament passed %s" % raw_sensor)
++
+                     elif sensor == SENSOR_SHARED_EXIT and gate is None:
+                         process_runout = True
+ 
+                     elif sensor.startswith(SENSOR_EXIT_PREFIX) and gate == mmu.gate_selected:
+                         process_runout = True
+ 
++                    elif sensor.startswith(SENSOR_EXTRUDER_ENTRY) and mmu.is_printing_runout_remains():
++                        remains_printed = True
++
+                     elif sensor.startswith(SENSOR_EXTRUDER_ENTRY):
+                         raise MmuError(
+                             "Filament runout occurred at the extruder entry on %s (%s). Manual intervention is required"
+@@ -157,6 +171,9 @@ class MmuSensorRunoutCommand(BaseCommand):
+                 if process_runout:
+                     # Will send_resume_command() or fail and pause
+                     mmu._runout(event_type="runout", sensor=sensor)
++                elif remains_printed:
++                    # Will send_resume_command() or fail and pause
++                    mmu._runout_remains_printed(sensor)
+                 else:
+                     # Undo what runout sensor handling did
+                     mmu.pause_resume.send_resume_command()
+diff --git a/extras/mmu/mmu_constants.py b/extras/mmu/mmu_constants.py
+index 9d5d1e39..e543b5d7 100644
+--- a/extras/mmu/mmu_constants.py
++++ b/extras/mmu/mmu_constants.py
+@@ -129,6 +129,7 @@ TOOLHEAD_UNLOAD_TEST_WARN = 1     # Also check unload homing distance, warn on f
+ TOOLHEAD_UNLOAD_TEST_PAUSE = 2    # Also check unload homing distance, pause on failure
+ UNLOAD_MIN_CUT_FRAGMENT = 2.0     # Smallest cut fragment (mm) whose absence the homing distance can resolve
+ CUT_PUSHBACK_CLEARANCE = 3.0      # Distance (mm) a fragment cut before the extruder must be pushed past the gears (also in _MMU_CUT_TIP)
++RUNOUT_REMAINS_GEAR_CLEARANCE = 10.0 # Distance (mm) the end of a run-out filament is pushed past the extruder gears (runout_use_remaining)
+ 
+ ACTION_IDLE = 0
+ ACTION_LOADING = 1
+diff --git a/extras/mmu/mmu_controller.py b/extras/mmu/mmu_controller.py
+index f6076a2b..6bbcaab2 100644
+--- a/extras/mmu/mmu_controller.py
++++ b/extras/mmu/mmu_controller.py
+@@ -2783,7 +2783,8 @@ class MmuController(MmuFilamentMovement):
+         if self.is_printing(force_in_print):
+             # Only where filament should reach the nozzle: a completed load, or an interrupted toolchange/load
+             if operation != 'unload' and (self.filament_pos == FILAMENT_POS_LOADED or self._next_tool != TOOL_GATE_UNKNOWN):
+-                self.sensor_manager.confirm_loaded() # Can throw MmuError
++                if not self.is_printing_runout_remains(): # Its gate and hub no longer see the remains
++                    self.sensor_manager.confirm_loaded() # Can throw MmuError
+                 if self._next_tool != TOOL_GATE_UNKNOWN:
+                     self._print_toolchange_done = True # Pending toolchange is confirmed, later ones are the slicer's
+             self.is_handling_runout = False
+@@ -2976,7 +2977,10 @@ class MmuController(MmuFilamentMovement):
+         between units (e.g. an encoder) ends up armed for the selected unit.
+         """
+         eventtime = self.reactor.monotonic() if eventtime is None else eventtime
+-        active_unit = self.mmu_unit() if self.filament_monitoring_enabled else None
++        # Not while printing the remains of a run-out spool: the end passing the buffer would trip it
++        active_unit = (self.mmu_unit()
++                       if self.filament_monitoring_enabled and not self.is_printing_runout_remains()
++                       else None)
+ 
+         for unit in self.mmu_machine.units:
+             if unit is not active_unit:
+@@ -4521,9 +4525,7 @@ class MmuController(MmuFilamentMovement):
+                             self.select_gate(self.p.endless_spool_eject_gate)
+                         self._unload_tool(form_tip=FORM_TIP_STANDALONE)
+                         self._eject_from_gate() # Push completely out of gate
+-                        self.select_gate(next_gate) # Necessary if unloaded to waste gate
+-                        self.gate_maps.remap_tool(self.tool_selected, next_gate)
+-                        self._select_and_load_tool(self.tool_selected, purge=PURGE_STANDALONE) # if user has set up standalone purging, respect option and purge.
++                        self._endless_spool_load(next_gate)
+                     except (MmuError, self.printer.command_error) as e:
+                         ee = self.mmu_error_from(e)
+                         raise ee.with_context("Occurred during EndlessSpool swap of %s to gate %d" % (where, next_gate)) from e
+@@ -4549,6 +4551,76 @@ class MmuController(MmuFilamentMovement):
+             raise MmuError(reason, hint=hint)
+ 
+ 
++    def _endless_spool_load(self, next_gate):
++        self.select_gate(next_gate) # Necessary if unloaded to waste gate
++        self.gate_maps.remap_tool(self.tool_selected, next_gate)
++        self._select_and_load_tool(self.tool_selected, purge=PURGE_STANDALONE) # if user has set up standalone purging, respect option and purge.
++
++
++    def can_use_runout_remaining(self):
++        """
++        Whether runout_use_remaining applies: the end of the filament can be followed from its
++        gate's entry sensor to the extruder entry sensor, and no encoder would read it as a clog.
++        """
++        return (
++            bool(self.p.runout_use_remaining)
++            and self.gate_selected >= 0
++            and not self.has_encoder()
++            and self.sensor_manager.has_sensor(SENSOR_EXTRUDER_ENTRY)
++        )
++
++
++    def is_printing_runout_remains(self):
++        """
++        True while the loaded filament's spool has run out (runout_use_remaining): its gate's
++        entry sensor no longer sees it but it is still in the extruder. Read from the sensors, not
++        remembered, so it still holds after a restart or once the print has ended.
++        """
++        return (
++            self.can_use_runout_remaining()
++            and self.filament_pos >= FILAMENT_POS_EXTRUDER_ENTRY
++            and self.sensor_manager.check_gate_sensor(SENSOR_ENTRY_PREFIX, self.gate_selected) is False
++        )
++
++
++    def _runout_remains_printed(self, sensor):
++        """
++        The end of a run-out filament has cleared the extruder entry sensor (runout_use_remaining).
++        Push what is left out through the nozzle, then load the EndlessSpool replacement or pause.
++        """
++        self.runout_last_handled_time = self.reactor.monotonic()
++
++        with self.wrap_suspend_filament_monitoring():
++            self.is_handling_runout = True # Until complete and continue or resume after error
++            self._save_toolhead_position_and_park('runout')
++            where = "%s (%s)" % (self.selected_tool_string(), self.gate_name())
++            gate = self.gate_selected
++            self.log_info("Filament from %s used up (end seen by %s)" % (where, sensor))
++            self.purge_runout_remains()
++
++            self._next_tool = self.tool_selected # Valid only during the reload - cleared in _continue_after()
++            next_gate, msg = -1, ""
++            if self.endless_spool_enabled:
++                next_gate, msg = self.gate_maps.get_next_endless_spool_gate(self.tool_selected, gate)
++            if next_gate == -1:
++                raise MmuError(
++                    "Spool on %s ran out and the filament left in the path has been printed%s"
++                    % (where, "\nNo alternative gates available after checking %s" % msg if msg else ""),
++                    hint="Load a new spool into gate %d, load %s (MMU_CHANGE_TOOL TOOL=%d), then RESUME"
++                         % (gate, self.selected_tool_string(), self.tool_selected)
++                )
++
++            self.log_info("Remapping T%d to gate %d" % (self.tool_selected, next_gate))
++            try:
++                self._endless_spool_load(next_gate)
++            except (MmuError, self.printer.command_error) as e:
++                ee = self.mmu_error_from(e)
++                raise ee.with_context("Occurred during EndlessSpool swap of %s to gate %d" % (where, next_gate)) from e
++
++            self._continue_after("endless_spool")
++            self.pause_resume.send_resume_command() # Undo what runout sensor handling did
++
++
+     # Wait for all movement to stop
+     def movequeue_wait(self):
+         self.toolhead.wait_moves()
+diff --git a/extras/mmu/mmu_filament_movement.py b/extras/mmu/mmu_filament_movement.py
+index 618083cc..e6b3ce26 100644
+--- a/extras/mmu/mmu_filament_movement.py
++++ b/extras/mmu/mmu_filament_movement.py
+@@ -2914,6 +2914,14 @@ class MmuFilamentMovement:
+             if not extruder_only:
+                 self._display_visual_state()
+ 
++            # Remains of a run-out spool (runout_use_remaining): nothing upstream grips them any more,
++            # so they leave through the nozzle. No cut: a cutter above the extruder gears would leave
++            # the upper piece with nothing to move it
++            if not extruder_only and self.is_printing_runout_remains():
++                self._save_toolhead_position_and_park('runout') # Where the runout purges
++                self.purge_runout_remains()
++                return
++
+             # Tip forming ---------------------------------
+             synced_extruder_unload = False
+             park_pos = 0.
+@@ -3108,6 +3116,60 @@ class MmuFilamentMovement:
+ # TIP FORMING AND PURGING
+ # -----------------------------------------------------------------------------------------------------------
+ 
++    def purge_runout_remains(self):
++        """
++        Push the end of a run-out filament out through the nozzle (runout_use_remaining). It is past
++        the gear, so nothing upstream can pull it back: the extruder feeds it until it clears the
++        extruder entry sensor, then past the extruder gears. What stays between the gears and the
++        nozzle is left for the next load to push out, like a cut fragment. The caller parks the
++        toolhead where it may purge.
++        """
++        u = self.mmu_unit()
++        toolhead = u.toolhead_wrapper.p
++        self.log_trace_entry("purge_runout_remains()")
++
++        bowden_length = u.calibrator.get_bowden_length()
++        if bowden_length < 0:
++            bowden_length = u.p.bowden_homing_max
++        max_length = bowden_length + u.p.gate_homing_max # Anywhere from the gate's entry to the extruder
++
++        with self.wrap_action(ACTION_PURGING):
++            self._ensure_safe_extruder_temperature(wait=True)
++            self.reset_sync_gear_to_extruder(False, force_grip=True)
++            self.log_info("Pushing the rest of the run-out filament out through the nozzle...")
++            # The extruder entry endstop lives on the gear rail. The gear helps while it still grips the end
++            actual, homed, _, _ = self.move_filament(
++                "Push run-out filament end to the extruder entry",
++                max_length,
++                speed=self.p.extruder_load_speed,
++                motor="gear+extruder",
++                homing_move=-1,
++                endstop_name=SENSOR_EXTRUDER_ENTRY,
++            )
++            if not homed:
++                self.set_filament_pos_state(FILAMENT_POS_UNKNOWN)
++                raise MmuError(
++                    "End of the run-out filament from %s did not clear the extruder entry sensor after pushing %.1fmm through the nozzle"
++                    % (self.gate_name(), actual),
++                    hint="Pull the rest of the filament out of the bowden and the extruder, " + HINT_RELOAD
++                )
++            self.move_filament(
++                "Push run-out filament end past the extruder gears",
++                toolhead.toolhead_entry_to_extruder + RUNOUT_REMAINS_GEAR_CLEARANCE,
++                speed=self.p.extruder_load_speed,
++                motor="extruder",
++                wait=True,
++            )
++
++        fragment = max(0., toolhead.toolhead_extruder_to_nozzle - RUNOUT_REMAINS_GEAR_CLEARANCE)
++        color = self.gate_color[self.gate_selected] if self.gate_selected >= 0 else UNKNOWN_FILAMENT_COLOR
++        u.extruder_wrapper.set_filament_remaining(fragment, color)
++        self.set_filament_pos_state(FILAMENT_POS_UNLOADED)
++        self.log_info("Run-out filament pushed out after %.1fmm, %.1fmm left in the toolhead (purged on next load)"
++                      % (actual, fragment))
++        self.log_trace_exit("purge_runout_remains() => None")
++
++
+     def form_tip_standalone(self, extruder_only=False):
+         """
+         Form tip prior to extraction from the extruder. This can take the form of shaping the filament or could simply
+@@ -3951,6 +4013,11 @@ class MmuFilamentMovement:
+                     self.log_info("Proportional sensor indicates no extruder grip - filament may not be fully loaded")
+                     self.set_filament_pos_state(FILAMENT_POS_IN_BOWDEN, silent=silent)
+ 
++        # Remains of a run-out spool being printed (runout_use_remaining): the gate and hub sensors no
++        # longer see them, the extruder entry sensor still does
++        elif not strict and self.filament_pos == FILAMENT_POS_LOADED and es and self.is_printing_runout_remains():
++            pass
++
+         # On a no-Bowden unit the extruder-entry sensor is also the gate datum. A
+         # triggered level proves filament reached the entrance but cannot distinguish
+         # that point from filament extending through the extruder to the nozzle. Recover
+diff --git a/extras/mmu/mmu_machine_parameters.py b/extras/mmu/mmu_machine_parameters.py
+index 8dde226e..6d0bd105 100644
+--- a/extras/mmu/mmu_machine_parameters.py
++++ b/extras/mmu/mmu_machine_parameters.py
+@@ -135,6 +135,7 @@ class MmuMachineParameters(TunableParametersBase):
+         ParamSpec('endless_spool_enabled',         'int',      0, section="FEATURES", limits=dict(minval=0, maxval=1)),
+         ParamSpec('endless_spool_on_load',         'int',      0, section="FEATURES", limits=dict(minval=0, maxval=1)),
+         ParamSpec('endless_spool_eject_gate',      'int',     -1, section="FEATURES", limits=dict(minval=-1)),
++        ParamSpec('runout_use_remaining',          'int',      0, section="FEATURES", limits=dict(minval=0, maxval=1)),
+         ParamSpec('bypass_autoload',               'int',      1, section="FEATURES", guard=_guard_has_sensor(SENSOR_EXTRUDER_ENTRY), limits=dict(minval=0, maxval=1)),
+ 
+         # Logging
+diff --git a/test/hh/filament.py b/test/hh/filament.py
+index e4c3b4c2..e244699e 100644
+--- a/test/hh/filament.py
++++ b/test/hh/filament.py
+@@ -410,9 +410,13 @@ class FilamentPath:
+                 if direction < 0:
+                     continue                    # retracting cannot close a switch ahead
+                 travel = position - start
++            elif direction > 0:
++                if self.tail[gate] == float('-inf'):
++                    continue                    # advancing cannot open a switch behind a spool
++                # The end of a run-out filament passes it; a hair beyond so the
++                # `tail <= position` comparison genuinely flips.
++                travel = position - self.tail[gate] + 1e-6
+             else:
+-                if direction > 0:
+-                    continue                    # advancing cannot open a switch behind
+                 # The switch opens as the tip passes back below it; a hair beyond so
+                 # the `tip >= position` comparison genuinely flips.
+                 travel = start - position + 1e-6
+diff --git a/test/test_mmu_runout_remaining.py b/test/test_mmu_runout_remaining.py
+new file mode 100644
+index 00000000..4fbad6e6
+--- /dev/null
++++ b/test/test_mmu_runout_remaining.py
+@@ -0,0 +1,228 @@
++# Happy Hare test harness - runout_use_remaining: print the filament left in the path after a
++# spool runs out, like the QIDI Box stock firmware.
++#
++# On a type-B MMU whose entry sensor sits before the gear (QIDI Box), the default runout pauses
++# as soon as the end of the filament clears the entry sensor, then unloads it with the gear.
++# By then the end may already be past the gear, and nothing can pull it back: the cut piece
++# stays in the bowden. With runout_use_remaining the print goes on with what is left in the
++# path, the real runout is the end clearing the extruder entry sensor, and the remains leave
++# through the nozzle. A toolchange in the meantime pushes the remains out the same way.
++#
++#   ./venv/bin/python -m unittest test.test_mmu_runout_remaining
++#
++# This file may be distributed under the terms of the GNU GPLv3 license.
++
++import logging
++import unittest
++
++from test.hh import session
++
++logging.getLogger().setLevel(logging.CRITICAL)
++
++FILAMENT_POS_UNLOADED = 0
++FILAMENT_POS_LOADED = 10
++GATE_EMPTY = 0
++TIP_AT_GATE = -40.0
++EXTRUDER_ENTRY = 900.0          # qidi profile layout
++SHARED_EXIT = 150.0
++ENTRY = -150.0                  # entry switch, before the gear
++
++
++class RunoutRemainingTestCase(unittest.TestCase):
++    PRELOAD_GATES = (0, 1, 2, 3)
++    GROUPS = '1,2,3,4'          # no EndlessSpool partner unless a test says so
++    USE_REMAINING = 1
++
++    def setUp(self):
++        self.hh = session('qidi')
++        self.hh.boot(calibrate=True)
++        self.assertEqual(self.hh.errors, [], 'bootup was not clean')
++        self.mmu = self.hh.mmu
++        self.fil = self.hh.filament()
++        for gate in self.PRELOAD_GATES:
++            self.hh.place_filament(gate, position=TIP_AT_GATE)
++            self.gcode('MMU_PRELOAD GATE=%d' % gate)
++        self.hh.heat_extruder(220)
++        self.gcode('MMU_ENDLESS_SPOOL GROUPS=%s ENABLE=1' % self.GROUPS)
++        self.mmu.p.runout_use_remaining = self.USE_REMAINING
++        self.assertEqual(self.hh.errors, [], 'setup was not clean')
++
++    def tearDown(self):
++        self.hh.close()
++
++    def gcode(self, script, settle=0.5):
++        self.hh.run_gcode(script)
++        self.hh.settle(settle)
++
++    def start_print(self, tool=0):
++        self.gcode('MMU_CHANGE_TOOL TOOL=%d' % tool)
++        self.hh.printer.lookup_object('print_stats').set_state('printing')
++        self.gcode('MMU_PRINT_START', settle=1.0)
++        self.assertEqual(self.hh.errors, [], 'print start failed')
++        self.assertTrue(self.mmu.is_printing())
++        return self.mmu.gate_selected
++
++    def run_out(self, gate):
++        """The spool ends: its tail clears the entry switch, as the print pulls filament."""
++        self.fil.exhaust(gate, at=ENTRY - 1.)
++        self.print_filament(gate, 2.)
++
++    def print_filament(self, gate, length):
++        """The print consumes filament: the whole piece moves toward the nozzle."""
++        self.fil.advance(gate, length, 'printing')
++        self.hh.settle(1.0)
++
++    def print_past(self, gate, position):
++        """Print until the tail has passed a path position."""
++        self.print_filament(gate, position - self.fil.tail[gate] + 1.)
++
++    def clear_errors(self):
++        del self.hh.gcode.errors[:]
++
++
++class TestDefaultStillPauses(RunoutRemainingTestCase):
++    USE_REMAINING = 0
++
++    def test_entry_runout_pauses_without_the_option(self):
++        gate = self.start_print()
++        self.run_out(gate)
++        self.assertTrue(self.mmu.is_mmu_paused(), 'the default behaviour must not change')
++
++
++class TestPrintingTheRemains(RunoutRemainingTestCase):
++
++    def test_entry_runout_keeps_printing(self):
++        gate = self.start_print()
++        self.run_out(gate)
++        self.assertEqual(self.hh.errors, [])
++        self.assertTrue(self.mmu.is_printing())
++        self.assertEqual(self.mmu.filament_pos, FILAMENT_POS_LOADED)
++
++    def test_the_exhausted_gate_is_marked_empty(self):
++        gate = self.start_print()
++        self.run_out(gate)
++        self.assertEqual(self.mmu.gate_status[gate], GATE_EMPTY)
++
++    def test_the_end_passing_the_hub_keeps_printing(self):
++        gate = self.start_print()
++        self.run_out(gate)
++        self.print_past(gate, SHARED_EXIT)
++        self.assertFalse(self.hh.sensor('unit0:mmu_shared_exit').present)
++        self.assertEqual(self.hh.errors, [])
++        self.assertTrue(self.mmu.is_printing())
++
++    def test_flowguard_is_off_while_the_remains_are_printed(self):
++        gate = self.start_print()
++        sync_feedback = self.mmu.mmu_unit().sync_feedback
++        self.assertTrue(sync_feedback.flowguard_active, 'precondition: FlowGuard armed in print')
++        self.run_out(gate)
++        self.assertFalse(sync_feedback.flowguard_active)
++
++    def test_pause_and_resume_while_printing_the_remains(self):
++        gate = self.start_print()
++        self.run_out(gate)
++        self.print_past(gate, SHARED_EXIT)
++        self.gcode('MMU_PAUSE')
++        self.clear_errors()
++        self.gcode('RESUME')
++        self.assertEqual([e for e in self.hh.errors if 'MMU issue' in e], [])
++        self.assertTrue(self.mmu.is_printing())
++
++
++class TestEndOfTheRemainsWithoutReplacement(RunoutRemainingTestCase):
++
++    def run_to_the_end(self):
++        gate = self.start_print()
++        self.run_out(gate)
++        self.print_past(gate, EXTRUDER_ENTRY)
++        # Klipper's PAUSE saves PAUSE_STATE for RESUME. The fake pause_resume already reads
++        # paused after send_pause_command(), so Happy Hare skips running PAUSE here
++        self.gcode('SAVE_GCODE_STATE NAME=PAUSE_STATE')
++        return gate
++
++    def test_pauses_with_the_path_clear(self):
++        self.run_to_the_end()
++        self.assertTrue(self.mmu.is_mmu_paused())
++        self.assertEqual(self.mmu.filament_pos, FILAMENT_POS_UNLOADED)
++        self.assertFalse(self.hh.sensor('extruder').present)
++
++    def test_the_end_is_pushed_past_the_extruder_gears(self):
++        gate = self.run_to_the_end()
++        tetn = self.mmu.mmu_unit().toolhead_wrapper.p.toolhead_extruder_to_nozzle
++        tete = self.mmu.mmu_unit().toolhead_wrapper.p.toolhead_entry_to_extruder
++        self.assertGreater(self.fil.tail[gate], EXTRUDER_ENTRY + tete)
++        remaining = self.mmu.mmu_unit().extruder_wrapper.filament_remaining
++        self.assertGreater(remaining, 0.)
++        self.assertLess(remaining, tetn)
++
++    def test_says_to_load_a_new_spool(self):
++        self.run_to_the_end()
++        self.assertIn('ran out', ' '.join(self.hh.errors).lower())
++        self.assertTrue(any('Load a new spool into gate 0' in msg for msg in self.hh.console))
++
++    def test_resume_without_a_new_spool_is_refused(self):
++        self.run_to_the_end()
++        self.clear_errors()
++        self.gcode('RESUME')
++        self.assertTrue(self.mmu.is_mmu_paused(), 'print resumed with no filament')
++
++    def test_resume_after_loading_the_tool_again(self):
++        """
++        The user loads T0 again, here from another gate: the model keeps one filament per gate,
++        so it cannot hold the toolhead remains and a new spool on gate 0 at once.
++        """
++        self.run_to_the_end()
++        self.gcode('MMU_TTG_MAP TOOL=0 GATE=1')
++        self.gcode('MMU_CHANGE_TOOL TOOL=0')
++        self.assertEqual(self.mmu.filament_pos, FILAMENT_POS_LOADED)
++        self.clear_errors()
++        self.gcode('RESUME')
++        self.assertEqual([e for e in self.hh.errors if 'MMU issue' in e], [])
++        self.assertTrue(self.mmu.is_printing())
++
++
++class TestEndOfTheRemainsWithEndlessSpool(RunoutRemainingTestCase):
++    GROUPS = '1,1,2,3'          # gate 1 replaces gate 0
++
++    def test_loads_the_replacement_and_keeps_printing(self):
++        gate = self.start_print(tool=0)
++        self.run_out(gate)
++        self.print_past(gate, EXTRUDER_ENTRY)
++        self.assertEqual(self.mmu.tool_selected, 0)
++        self.assertEqual(self.mmu.gate_selected, 1)
++        self.assertEqual(self.mmu.filament_pos, FILAMENT_POS_LOADED)
++        self.assertTrue(self.mmu.is_printing())
++        self.assertFalse(self.mmu.is_mmu_paused())
++
++    def test_the_hub_runout_does_not_swap_early(self):
++        gate = self.start_print(tool=0)
++        self.run_out(gate)
++        self.print_past(gate, SHARED_EXIT)
++        self.assertEqual(self.mmu.gate_selected, gate, 'swapped before the remains were printed')
++
++
++class TestToolchangeWhilePrintingTheRemains(RunoutRemainingTestCase):
++
++    def test_the_remains_leave_through_the_nozzle(self):
++        gate = self.start_print(tool=0)
++        self.run_out(gate)
++        self.gcode('MMU_CHANGE_TOOL TOOL=1', settle=1.0)
++        self.assertEqual(self.hh.errors, [])
++        self.assertEqual(self.mmu.gate_selected, 1)
++        self.assertEqual(self.mmu.filament_pos, FILAMENT_POS_LOADED)
++        self.assertGreater(self.fil.tail[gate], EXTRUDER_ENTRY, 'remains were not pushed out')
++        self.assertTrue(self.mmu.is_printing())
++
++    def test_the_remains_are_not_cut(self):
++        """A cutter above the extruder gears would leave the upper piece with nothing to move it."""
++        gate = self.start_print(tool=0)
++        self.run_out(gate)
++        del self.hh.gcode.console[:]
++        self.gcode('MMU_CHANGE_TOOL TOOL=1', settle=1.0)
++        tip = [msg for msg in self.hh.console if 'Forming tip' in msg or 'Cutting tip' in msg]
++        self.assertEqual(tip, [])
++        self.assertGreater(self.fil.tail[gate], EXTRUDER_ENTRY, 'remains were not pushed out')
++
++
++if __name__ == '__main__':
++    unittest.main()
+-- 
+2.54.0 (Apple Git-157)
+
