@@ -41,7 +41,7 @@ KIAUH_BRANCH=master
 KIAUH_REF=8f5b21280c1e6be6963a7add63484a35c49d8d94
 
 MAINSAIL_VERSION=v2.19.0
-FLUIDD_VERSION=v1.37.7
+FLUIDD_VERSION=v1.38.0
 SPOOLMAN_VERSION=v0.27.1
 # Obico's ML API for failure detection (detect/): the CPU image Obico publishes from
 # obico-server's release branch (x86_64 and arm64), pinned by digest. OBICO_SERVER_REF is the
