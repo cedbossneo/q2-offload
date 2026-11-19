@@ -8,7 +8,7 @@ The host is the computer that will run Klipper. Ten minutes, nothing on the prin
 1. **Install the system.** Debian 12 or 13, or Ubuntu Server 22.04, 24.04 or 26.04 LTS. A
    minimal install is enough; no desktop needed. Create your normal user with `sudo` rights.
 
-2. **Plug it into the network**, with a cable if you can, on the same network as the printer.
+2. **Plug it into the network**, either into a router or 
 
 3. **Give both machines a fixed address.** In your router, reserve an IP address for the
    printer and for the host. The printer's board only accepts the host address saved at
@@ -32,4 +32,4 @@ The host is the computer that will run Klipper. Ten minutes, nothing on the prin
 
    Three replies: you're ready.
 
-Next: [Run the installer](run-installer.md).
+Next: [Run the installer](../install/run-installer.md).
