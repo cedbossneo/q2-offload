@@ -4,7 +4,7 @@
 # Klipper (host + MCU firmware are always built from this exact tree + patches/klipper)
 KLIPPER_REPO=https://github.com/Klipper3d/klipper.git
 KLIPPER_BRANCH=master
-KLIPPER_REF=29d4ec2d6d840ee839333306003a400da186d41d
+KLIPPER_REF=a86759335197374d2787c87477b21e2af6fa07e1
 
 # Happy Hare (MMU software for the Qidi Box) + patches/happy-hare. Follows its GitHub
 # releases (its main branch moves with every merge): HAPPY_HARE_REF is the release's commit.
@@ -41,7 +41,7 @@ KIAUH_BRANCH=master
 KIAUH_REF=8f5b21280c1e6be6963a7add63484a35c49d8d94
 
 MAINSAIL_VERSION=v2.19.0
-FLUIDD_VERSION=v1.38.0
+FLUIDD_VERSION=v1.38.1
 SPOOLMAN_VERSION=v0.27.1
 # Obico's ML API for failure detection (detect/): the CPU image Obico publishes from
 # obico-server's release branch (x86_64 and arm64), pinned by digest. OBICO_SERVER_REF is the
