@@ -1,5 +1,5 @@
 ---
-title: Direct Wire Guide 
+title: Direct Connect Guide 
 description: Guide for wiring the host directly to the Q2 with a single Ethernet cable.
 ---
 
@@ -66,4 +66,4 @@ Reboot the printer so it picks up the new IP.
 
 Run `ping -c 3 10.42.0.67`. Three pings and you're good to go.
 
-Next: [Run the installer](run-installer.md). Substitute `192.168.1.50` with `10.42.0.67`.
+Next: [Run the installer](../install/run-installer.md). Substitute `192.168.1.50` with `10.42.0.67`.
