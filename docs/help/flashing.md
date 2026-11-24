@@ -45,8 +45,13 @@ through Qidi's bootloader. The installer then downloads it from Qidi's public 1.
 (137 MB), checks its checksum and copies it to the printer. A printer updated from 1.1.x
 normally keeps its own.
 
+`mks` cannot keep an SSH key in a home that belongs to `qidi`. When the usual key setup
+fails, the installer asks for the SSH password, then the sudo password, once more. It then
+installs the key as root in `/etc/ssh/authorized_keys.d/mks`, and adds
+`/etc/ssh/sshd_config.d/q2-offload-keys.conf` so that sshd reads it.
+
 > [!WARNING]
-> No conversion from these versions has been tested yet. The installer checks the printer
-> before a first conversion and stops, with nothing flashed, if a board or root access is
-> missing. If it stops or the conversion fails, please open an
+> Only one conversion from these versions has been reported so far (01.01.03.02, updated
+> from 01.01.02.03). The installer checks the printer before a first conversion and stops,
+> with nothing flashed, if a board or root access is missing. If it stops or the conversion fails, please open an
 > [issue](https://github.com/cedbossneo/q2-offload/issues) with its output.

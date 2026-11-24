@@ -22,15 +22,42 @@ printer_check_stock() {
     proot stock-check || die "the printer is not ready for a first conversion; nothing was flashed. See https://cedbossneo.github.io/q2-offload/docs/help/flashing/"
 }
 
+printer_key_login() { ssh -o BatchMode=yes "${SSH_OPTS[@]}" "${PRINTER_USER}@${PRINTER_IP}" true 2>/dev/null; }
+
 printer_ssh_key() {
-    if ssh -o BatchMode=yes "${SSH_OPTS[@]}" "${PRINTER_USER}@${PRINTER_IP}" true 2>/dev/null; then
-        return 0
-    fi
+    printer_key_login && return 0
     info "Setting up SSH key access to ${PRINTER_USER}@${PRINTER_IP} (mks: stock password makerbase)"
     [ -f "${HOME}/.ssh/id_ed25519" ] || ssh-keygen -q -t ed25519 -N '' -f "${HOME}/.ssh/id_ed25519"
-    ssh-copy-id -i "${HOME}/.ssh/id_ed25519.pub" "${PRINTER_USER}@${PRINTER_IP}" >/dev/null
-    ssh -o BatchMode=yes "${SSH_OPTS[@]}" "${PRINTER_USER}@${PRINTER_IP}" true \
-        || die "SSH key login to the printer failed"
+    ssh-copy-id -i "${HOME}/.ssh/id_ed25519.pub" "${PRINTER_USER}@${PRINTER_IP}" >/dev/null || true
+    printer_key_login && return 0
+    printer_ssh_key_as_root
+    printer_key_login || die "SSH key login to the printer failed"
+}
+
+# Stock 01.01.02+: /home/mks is a symlink to /home/qidi, owned by qidi. mks cannot create
+# ~/.ssh there, and sshd's StrictModes would refuse a key in a home owned by someone else.
+# Root keeps the key in /etc/ssh/authorized_keys.d/<user> and sshd also reads that file.
+printer_ssh_key_as_root() {
+    local script
+    info "${PRINTER_USER} cannot keep an SSH key in its home (stock 01.01.02+): root installs it in /etc/ssh/authorized_keys.d (SSH password, then sudo password)"
+    # base64: the key and the script go through ssh and sudo without quoting issues
+    script="$(base64 -w0 <<EOS
+set -e
+install -d -m 755 /etc/ssh/authorized_keys.d
+keys=/etc/ssh/authorized_keys.d/${PRINTER_USER}
+key='$(cat "${HOME}/.ssh/id_ed25519.pub")'
+touch "\$keys"
+grep -qxF "\$key" "\$keys" || echo "\$key" >> "\$keys"
+chmod 644 "\$keys"
+conf=/etc/ssh/sshd_config.d/q2-offload-keys.conf
+echo 'AuthorizedKeysFile .ssh/authorized_keys .ssh/authorized_keys2 /etc/ssh/authorized_keys.d/%u' > "\$conf"
+# Never leave a config that would stop sshd from starting at the next boot
+sshd -t || { rm -f "\$conf"; exit 1; }
+systemctl reload ssh 2>/dev/null || systemctl reload sshd
+EOS
+)"
+    ssh -tt "${SSH_OPTS[@]}" "${PRINTER_USER}@${PRINTER_IP}" "echo ${script} | base64 -d | sudo sh" \
+        || die "could not install the SSH key as root on the printer; nothing was flashed (see https://cedbossneo.github.io/q2-offload/docs/help/flashing/)"
 }
 
 printer_push() {
