@@ -19,8 +19,11 @@ spec.loader.exec_module(reset)
 
 
 class FakeMcu(threading.Thread):
-    def __init__(self, dictionary, reset_id):
+    """Answers like Klipper's MCU: a frame with another sequence than the one it expects is
+    dropped and answered by an empty frame (nak) carrying the expected sequence."""
+    def __init__(self, dictionary, reset_id, expect_seq=0):
         super().__init__(daemon=True)
+        self.expect_seq = expect_seq
         self.data = zlib.compress(json.dumps(dictionary).encode())
         self.reset_id = reset_id
         self.master, slave = pty.openpty()
@@ -35,8 +38,12 @@ class FakeMcu(threading.Thread):
             if not select.select([self.master], [], [], 5)[0]:
                 return
             buffer += os.read(self.master, 4096)
-            payloads, buffer = reset.split_frames(buffer.lstrip(b"\x7e"))
-            for payload in payloads:
+            blocks, buffer = reset.split_blocks(buffer.lstrip(b"\x7e"))
+            for seq, payload in blocks:
+                if seq != self.expect_seq:
+                    os.write(self.master, reset.frame(b"", self.expect_seq))
+                    continue
+                self.expect_seq = (seq + 1) & reset.SEQ_MASK
                 self.handle(payload)
 
     def handle(self, payload):
@@ -48,11 +55,11 @@ class FakeMcu(threading.Thread):
             count, pos = reset.decode_vlq(payload, pos)
             chunk = self.data[offset:offset + count]
             answer = reset.encode_vlq(reset.MSG_IDENTIFY_RESPONSE) + reset.encode_vlq(offset) + reset.encode_vlq(len(chunk)) + chunk
-            os.write(self.master, reset.frame(answer, 0))
+            os.write(self.master, reset.frame(answer, self.expect_seq))
 
 
-def run(dictionary, reset_id):
-    mcu = FakeMcu(dictionary, reset_id)
+def run(dictionary, reset_id, expect_seq=0):
+    mcu = FakeMcu(dictionary, reset_id, expect_seq)
     mcu.start()
     result = subprocess.run([sys.executable, str(SCRIPT), mcu.device], capture_output=True, text=True, timeout=30)
     mcu.got_reset.wait(2)
@@ -77,6 +84,18 @@ def test_negative_command_id_is_encoded_like_klipper():
 def test_firmware_without_reset_fails_cleanly():
     result, mcu = run({"commands": {"other": 3}}, 99)
     assert result.returncode != 0 and "no reset command" in result.stderr and not mcu.got_reset.is_set()
+
+
+def test_nak_from_an_mcu_that_expects_another_sequence_is_followed():
+    # The stock Klipper host talked to the MCU before us: it expects sequence 9, not 0 (#37)
+    result, mcu = run({"commands": {"reset": 111, "other": 3}}, 111, expect_seq=9)
+    assert result.returncode == 0, result.stderr
+    assert mcu.got_reset.is_set() and "111" in result.stdout
+
+
+def test_empty_or_truncated_payload_is_not_an_identify_response():
+    assert reset.parse_identify_response(b"") is None
+    assert reset.parse_identify_response(bytes([reset.MSG_IDENTIFY_RESPONSE, 0x80])) is None
 
 
 def test_crc_matches_klipper():
