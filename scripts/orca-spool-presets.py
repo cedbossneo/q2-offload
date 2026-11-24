@@ -195,6 +195,9 @@ def read_printer(moonraker, spools):
     url = "%s/printer/objects/query?mmu=%s&%s" % (moonraker.rstrip("/"), MMU_FIELDS, ENVIRONMENT)
     try:
         status = fetch_json(url)["result"]["status"]
+        # No Box (install.sh --no-box): no Happy Hare, the mmu fields come back null
+        if not (status.get("mmu") or {}).get("gate_status"):
+            return {}, []
         return box_from(status), gates_from(status["mmu"], spools)
     except (OSError, KeyError, ValueError):
         return {}, []
