@@ -26,16 +26,38 @@ info "Moonraker configuration"
 "${HOME}/moonraker-env/bin/python" "${HOME}/moonraker/moonraker/moonraker.py" -d "$data" > /dev/null 2>&1 &
 pid=$!
 # Moonraker's update manager runs git on the repos at start: wait for it to exit and for those
-# git commands to release their locks, or the next install step finds index.lock and fails
+# git commands to release their locks, or the next install step finds index.lock and fails.
+# A git it started can outlive it or be killed holding its lock: stop the leftovers and drop
+# the locks nothing holds any more.
+git_locks() { compgen -G "${HOME}/*/.git/index.lock" || true; }
+wait_git_locks() {
+    local _
+    for _ in $(seq 1 "$1"); do
+        [ -z "$(git_locks)" ] && return 0
+        sleep 0.25
+    done
+    return 1
+}
+# Without pkill: minimal CI images have no procps
+kill_my_git() {
+    local proc
+    for proc in /proc/[0-9]*; do
+        [ -O "$proc" ] && [ "$(cat "${proc}/comm" 2>/dev/null)" = git ] && { kill "${proc#/proc/}" 2>/dev/null || true; }
+    done
+    return 0
+}
 stop_moonraker() {
     kill "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
-    local _
-    for _ in $(seq 1 40); do
-        compgen -G "${HOME}/*/.git/index.lock" > /dev/null || return 0
-        sleep 0.25
+    wait_git_locks 40 && return 0
+    warn "a git lock is still there after Moonraker stopped: stopping leftover git commands"
+    kill_my_git
+    wait_git_locks 20 && return 0
+    local lock
+    for lock in $(git_locks); do
+        warn "removing stale ${lock}"
+        rm -f "$lock"
     done
-    warn "a git lock is still there after Moonraker stopped"
 }
 trap stop_moonraker EXIT
 for _ in $(seq 1 30); do
