@@ -72,9 +72,9 @@ def frame(payload, seq):
     return head + bytes([crc >> 8, crc & 0xFF, SYNC])
 
 
-def split_frames(buffer):
-    """Valid frame payloads in the buffer, and what is left to read."""
-    payloads = []
+def split_blocks(buffer):
+    """Valid frames in the buffer as (sequence, payload), and what is left to read."""
+    blocks = []
     while buffer:
         length = buffer[0]
         if length < HEADER + TRAILER or length > 64:
@@ -85,19 +85,24 @@ def split_frames(buffer):
         block = buffer[:length]
         crc = crc16(block[:-TRAILER])
         if block[-1] == SYNC and block[-3] == crc >> 8 and block[-2] == crc & 0xFF:
-            payloads.append(block[HEADER:-TRAILER])
+            blocks.append((block[1] & SEQ_MASK, block[HEADER:-TRAILER]))
             buffer = buffer[length:]
         else:
             buffer = buffer[1:]
-    return payloads, buffer
+    return blocks, buffer
 
 
 def parse_identify_response(payload):
-    msgid, pos = decode_vlq(payload, 0)
-    if msgid != MSG_IDENTIFY_RESPONSE:
+    """(offset, data) of an identify_response, None for anything else. An empty payload is an
+    ack/nak; a truncated one is leftover output of the MCU's previous session."""
+    try:
+        msgid, pos = decode_vlq(payload, 0)
+        if msgid != MSG_IDENTIFY_RESPONSE:
+            return None
+        offset, pos = decode_vlq(payload, pos)
+        size, pos = decode_vlq(payload, pos)
+    except IndexError:
         return None
-    offset, pos = decode_vlq(payload, pos)
-    size, pos = decode_vlq(payload, pos)
     return offset, payload[pos:pos + size]
 
 
@@ -125,16 +130,27 @@ class Link:
             # Clears anything half sent by the MCU's previous session
             os.write(self.fd, bytes([SYNC]))
             self.send(request)
-            deadline = time.monotonic() + TIMEOUT_SECONDS
-            while time.monotonic() < deadline:
-                if select.select([self.fd], [], [], 0.1)[0]:
-                    self.pending += os.read(self.fd, 4096)
-                payloads, self.pending = split_frames(self.pending)
-                for payload in payloads:
-                    parsed = parse_identify_response(payload)
-                    if parsed and parsed[0] == offset:
-                        return parsed[1]
+            chunk = self.read_identify_response(offset)
+            if chunk is not None:
+                return chunk
         raise SystemExit("no answer from the MCU")
+
+    def read_identify_response(self, offset):
+        """The chunk at offset, or None to resend: timeout, or the MCU dropped our frame."""
+        deadline = time.monotonic() + TIMEOUT_SECONDS
+        while time.monotonic() < deadline:
+            if select.select([self.fd], [], [], 0.1)[0]:
+                self.pending += os.read(self.fd, 4096)
+            blocks, self.pending = split_blocks(self.pending)
+            for seq, payload in blocks:
+                if not payload and seq != self.seq & SEQ_MASK:
+                    # Nak: the MCU, still in the stock host's session, expects this sequence
+                    self.seq = seq
+                    return None
+                parsed = parse_identify_response(payload)
+                if parsed and parsed[0] == offset:
+                    return parsed[1]
+        return None
 
     def dictionary(self):
         data = b""
