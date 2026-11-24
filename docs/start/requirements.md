@@ -11,9 +11,9 @@ description: The printer, a computer to run Klipper, and the network between the
       `makerbase`; you don't need to do anything with it, the installer logs in for you.
 
 > [!WARNING]
-> Printers on stock firmware **01.01.02 or newer** haven't been converted yet: they
-> change the printer's user accounts and flashing tool. The installer checks the printer and
-> stops before flashing anything if something is missing.
+> Stock firmware **01.01.02 or newer** changes the printer's user accounts and flashing
+> tool. One conversion from it has been reported so far (01.01.03.02). The installer checks
+> the printer and stops before flashing anything if something is missing.
 > [Details](../help/flashing.md#stock-firmware-010102-and-newer).
 
 ## A computer to run Klipper
