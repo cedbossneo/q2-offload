@@ -4,7 +4,7 @@
 # Klipper (host + MCU firmware are always built from this exact tree + patches/klipper)
 KLIPPER_REPO=https://github.com/Klipper3d/klipper.git
 KLIPPER_BRANCH=master
-KLIPPER_REF=c9559fa04ec6b11fb1a9a1610903546319fcf310
+KLIPPER_REF=7558e8c2f6f3f2ca4b5ff1ddd85d2b82f0c3881d
 
 # Happy Hare (MMU software for the Qidi Box) + patches/happy-hare. Follows its GitHub
 # releases (its main branch moves with every merge): HAPPY_HARE_REF is the release's commit.
@@ -73,4 +73,4 @@ HID_FLASH_SHA256=b53abfda5f9c295e2ce1cf59b1fd04df7deac043810aa6ac77a3bf4857e55a7
 
 # OrcaSlicer filament library used to generate the spool presets (scripts/orca-spool-presets.py):
 # OrcaSlicer's latest release, taken by bump.sh once its library still has the expected layout
-ORCA_PROFILES_REF=v2.5.0-rc
+ORCA_PROFILES_REF=v2.5.2
