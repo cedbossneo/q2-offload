@@ -19,6 +19,17 @@ Mainsail's sidebar links to the Box, failure detection, autopa and Spoolman page
 The **touchscreen** runs HelixScreen, connected to the host: temperatures, prints, the Box
 and its drying, and the dialogs q2-offload opens (a new spool's calibration, a failed load).
 
+- **Print options.** Before a print you start from the touchscreen, **Cleaning nozzle** and
+  **Auto Bed Mesh** can be turned off for that print. Without a mesh, the print uses the mesh
+  in use, else the last print's: fine for a reprint of the same part. When there is none, the
+  bed is probed anyway.
+- **Preparation.** While `PRINT_START` runs, a checklist shows each step: homing, cleaning,
+  heating, Z tilt, bed mesh, loading the filament.
+- **After a power cut**, it asks **Resume interrupted print?**: **Resume** runs q2-offload's
+  power-loss recovery, **Discard** forgets it. Mainsail's console offers the same choice.
+- **Install Helper Macros**, in its Advanced panel, is not needed: q2-offload installs and
+  updates them.
+
 <details>
 <summary>The camera, and Home Assistant</summary>
 
