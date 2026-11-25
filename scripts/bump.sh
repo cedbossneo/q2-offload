@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Move every upstream pin in VERSIONS to its latest version (branch head or latest release).
 # Prints a summary of the changes; exit 0 even when nothing changed. Used by bump.yml.
-# The Katapult deployers (DEPLOYER_*) are never bumped: they are flashed over the stock
-# bootloader and a bad one bricks an MCU, so they only change by hand.
+# The Katapult deployers (DEPLOYER_*) and Qidi's hid-flash (HID_FLASH_*) are never bumped:
+# they are flashed over the stock bootloader and a bad one bricks an MCU, so they only change
+# by hand. Every other pin in VERSIONS is moved here (tests/bump/test_bump_coverage.py).
 set -Eeuo pipefail
 . "$(dirname "$0")/lib.sh"
 file="${Q2_ROOT}/VERSIONS"
@@ -39,6 +40,19 @@ ghcr_index() {
 # Only take a container release once its image is actually published
 ghcr_has_tag() { ghcr_index "$1" "$2" >/dev/null; }
 
+# release_has_asset <owner/repo> <tag> <name>: the release carries that file
+release_has_asset() {
+    download "https://api.github.com/repos/$1/releases/tags/$2" - \
+        ${GITHUB_TOKEN:+-H "Authorization: Bearer ${GITHUB_TOKEN}"} \
+        | python3 -c 'import json,sys; sys.exit(sys.argv[1] not in [a["name"] for a in json.load(sys.stdin)["assets"]])' "$3"
+}
+
+# orca_library_has <tag>: a base profile the spool presets inherit from is at the path
+# scripts/orca-spool-presets.py reads
+orca_library_has() {
+    download "https://raw.githubusercontent.com/OrcaSlicer/OrcaSlicer/$1/resources/profiles/OrcaFilamentLibrary/filament/Generic%20PLA%20@System.json" /dev/null
+}
+
 # Obico's ML API: the image behind Obico's "release" tag, when it covers x86_64 and arm64.
 # Prints the commit it was built from (its revision annotation).
 obico_release_commit() {
@@ -74,6 +88,12 @@ if release_contains moggieuk/Happy-Hare "$ref" "$(sed -n 's/^HAPPY_HARE_REF=//p'
 fi
 set_var MAINSAIL_VERSION "$(latest_release mainsail-crew/mainsail)"
 set_var FLUIDD_VERSION "$(latest_release fluidd-core/fluidd)"
+# HelixScreen: only a release that ships the installer the printer runs
+v="$(latest_release "$HELIXSCREEN_REPO")"
+release_has_asset "$HELIXSCREEN_REPO" "$v" install.sh && set_var HELIXSCREEN_VERSION "$v"
+# OrcaSlicer's filament library: only when the base profiles are still where the presets read them
+v="$(latest_release OrcaSlicer/OrcaSlicer)"
+orca_library_has "$v" && set_var ORCA_PROFILES_REF "$v"
 v="$(latest_release Donkie/Spoolman)"
 ghcr_has_tag donkie/spoolman "${v#v}" && set_var SPOOLMAN_VERSION "$v"
 index="$(mktemp)"

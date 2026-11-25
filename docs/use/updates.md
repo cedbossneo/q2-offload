@@ -6,8 +6,9 @@ description: Update from Mainsail or Fluidd in one click; what happens, and when
 ## Update from Mainsail or Fluidd
 
 Open the update manager and update **q2-offload**. It installs the new Klipper, Happy Hare,
-autopa, web interfaces and failure detection, then restarts Klipper. Progress shows in the
-console.
+autopa, web interfaces and failure detection, moves HelixScreen on the touchscreen to the
+version tested with them (never back to an older one you took from its own **Settings >
+Updates**), then restarts Klipper. Progress shows in the console.
 
 - **Never during a print.** If one is running, a dialog says how to apply the update afterwards.
 - **The boards are never flashed from there**, because flashing needs someone at the
@@ -39,8 +40,8 @@ The installer asked which versions to offer:
 
 Change it with `./install.sh host --channel stable` or `--channel latest`.
 
-Every day, the automatic tests move Klipper, Happy Hare, Moonraker, autopa and the web
-interfaces to their latest versions, re-apply q2-offload's patches, build the firmware,
+Every day, the automatic tests move Klipper, Happy Hare, Moonraker, autopa, the web
+interfaces, HelixScreen and the other components to their latest versions, re-apply q2-offload's patches, build the firmware,
 install everything on a clean machine and check the configuration. Only a version that passes
 is offered.
 

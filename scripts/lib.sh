@@ -48,6 +48,22 @@ download() {
         --connect-timeout "$DOWNLOAD_CONNECT_TIMEOUT" "$@" -o "$out" "$url"
 }
 
+# version_lt <a> <b>: release a (v1.2.3, v1.2.3-rc.4) is older than release b. A pre-release
+# is older than its release.
+version_lt() {
+    python3 - "$1" "$2" <<'EOF_PY'
+import re, sys
+def key(v):
+    m = re.match(r"v?(\d+)\.(\d+)\.(\d+)(?:-(.+))?$", v.strip())
+    if not m:
+        sys.exit(2)
+    pre = m.group(4)
+    tail = (1,) if pre is None else (0,) + tuple((0, int(p), "") if p.isdigit() else (1, 0, p) for p in pre.split("."))
+    return tuple(int(x) for x in m.group(1, 2, 3)) + tail
+sys.exit(0 if key(sys.argv[1]) < key(sys.argv[2]) else 1)
+EOF_PY
+}
+
 # checkout_ref <repo-url> <ref> <dir>: clone if needed, then detach at <ref>.
 # A clone left by another install (a fork, a single-branch or shallow clone) may not have
 # <ref> ("fatal: unable to read tree"): its origin is pointed at <repo-url> and <ref> is

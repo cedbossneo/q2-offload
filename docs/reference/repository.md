@@ -26,10 +26,13 @@ channel. A beta tested on a printer is promoted to `vYYYY.MM.DD`, the `stable` c
 Actions → **Promote to stable** → Run workflow with its beta tag (empty: the latest beta), or
 `gh workflow run promote.yml -f tag=vYYYY.MM.DD-beta.N`.
 
-Every day, `bump.yml` moves Klipper, Happy Hare, Moonraker, autopa and the web clients to their
-latest versions, re-applies the patches, builds the firmware, installs the whole stack on a
-clean machine and validates the configuration against the new firmware. Only a version that
-passes reaches `main`, with its firmware published as a release.
+Every day, `bump.yml` moves every version pinned in `VERSIONS` to its latest upstream version
+(Klipper, Happy Hare, Moonraker, Katapult, autopa, the web clients, Spoolman, Obico's ML API,
+HelixScreen, OrcaSlicer's filament library...), re-applies the patches, builds the firmware,
+installs the whole stack on a clean machine and validates the configuration against the new
+firmware. Only a version that passes reaches `main`, with its firmware published as a release.
+The Katapult deployers and Qidi's `hid-flash` are the only pins changed by hand; CI fails when
+a new pin is added to `VERSIONS` without `scripts/bump.sh` moving it.
 
 ## On the host
 

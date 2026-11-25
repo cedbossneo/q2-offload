@@ -304,6 +304,7 @@ EOF
     fi
     host_start
     wait_ready || true
+    printer_helixscreen_update
     [ "$KEEP_KLIPPER" = 1 ] && warn "Klipper kept at $(klipper_version): run ./install.sh flash to move to $(firmware_id)"
     verify_install
 }
@@ -394,6 +395,7 @@ do_update_user() {
     host_autopa
     host_detect_env
     host_web_clients
+    printer_helixscreen_update
 }
 
 do_status() {

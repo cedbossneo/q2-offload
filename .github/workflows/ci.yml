@@ -30,6 +30,9 @@ jobs:
       - name: macros
         # The runner image's package index can be older than its mirror: refresh it first
         run: sudo apt-get update -qq && sudo apt-get install -y -qq python3-jinja2 >/dev/null && for t in tests/macros/test_*.py; do python3 "$t" || exit 1; done
+      - name: upstream pins
+        # Every version in VERSIONS is moved by the daily upstream update (scripts/bump.sh)
+        run: python3 tests/bump/test_bump_coverage.py
       - name: failure detection
         run: |
           sudo apt-get install -y -qq python3-aiohttp python3-pil >/dev/null

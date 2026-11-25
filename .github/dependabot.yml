@@ -1,0 +1,16 @@
+# What scripts/bump.sh does not move: the libraries q2-offload itself depends on and the CI
+# actions. Grouped, monthly: one pull request per ecosystem, checked by CI like any other.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: monthly }
+    groups: { actions: { patterns: ["*"] } }
+  - package-ecosystem: pip
+    directory: /detect
+    schedule: { interval: monthly }
+    groups: { detect: { patterns: ["*"] } }
+  - package-ecosystem: npm
+    directory: /site
+    schedule: { interval: monthly }
+    groups: { site: { patterns: ["*"] } }
