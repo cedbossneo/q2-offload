@@ -16,6 +16,7 @@
 #   q2-printer.sh sudoers                          (passwordless sudo for this script only)
 #   q2-printer.sh status
 #   q2-printer.sh helixscreen-restart
+#   q2-printer.sh helixscreen-update <owner/repo> <version>   (HelixScreen's installer, settings kept)
 set -Eeuo pipefail
 
 # Stock firmware 01.01.02.x moves /home/mks to /home/qidi and leaves a symlink. Resolve it:
@@ -420,6 +421,17 @@ cmd_sudoers() {
     info "sudo rule for ${u}: q2-printer.sh only"
 }
 
+# HelixScreen's own installer at that release, with --update: its settings, layout and Moonraker
+# address are kept. As root, so the unattended update needs no sudo password; the installer
+# still finds the existing install under the printer user's home.
+cmd_helixscreen_update() {
+    local repo="${1:?owner/repo}" version="${2:?version}"
+    [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "bad HelixScreen repository: ${repo}"
+    [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || die "bad HelixScreen version: ${version}"
+    curl -fsSL --retry 3 --connect-timeout 20 "https://github.com/${repo}/releases/download/${version}/install.sh" \
+        | sh -s -- --update --version "$version"
+}
+
 cmd_setup() {
     cmd_proxy_install "${1:?klipper host ip}"
     cmd_stock_stop
@@ -453,5 +465,6 @@ case "$sub" in
     sudoers) cmd_sudoers ;;
     status) cmd_status ;;
     helixscreen-restart) systemctl restart helixscreen ;;
-    *) sed -n '2,15p' "$0"; exit 2 ;;
+    helixscreen-update) cmd_helixscreen_update "$@" ;;
+    *) sed -n '2,19p' "$0"; exit 2 ;;
 esac

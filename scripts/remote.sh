@@ -217,16 +217,48 @@ printer_proxies() {
     proot setup "$HOST_IP"
 }
 
+HELIXSCREEN_DIR="/home/${PRINTER_USER}/helixscreen"
+helixscreen_installer_url() { echo "https://github.com/${HELIXSCREEN_REPO}/releases/download/${HELIXSCREEN_VERSION}/install.sh"; }
+
+# HelixScreen release on the printer (v1.0.11...), empty when it is not installed
+printer_helixscreen_version() {
+    pssh "cat ${HELIXSCREEN_DIR}/release_info.json 2>/dev/null || ${HELIXSCREEN_DIR}/bin/helix-screen --version 2>/dev/null" \
+        | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?' | head -1 || true
+}
+
+# Move HelixScreen to HELIXSCREEN_VERSION when the printer runs an older release. Never to an
+# older one: a release the user took from HelixScreen's own updater stays. Never fails the
+# caller: the touchscreen is not needed to print, and HelixScreen can update itself.
+printer_helixscreen_update() {
+    local installed
+    in_ci && return 0  # no printer
+    installed="$(printer_helixscreen_version)"
+    [ -n "$installed" ] || return 0  # not installed (declined at install time)
+    version_lt "$installed" "$HELIXSCREEN_VERSION" || return 0
+    info "HelixScreen ${installed} -> ${HELIXSCREEN_VERSION} on the touchscreen"
+    # The printer may still have a q2-printer.sh from before helixscreen-update existed
+    scp -q "${SSH_OPTS[@]}" "${Q2_ROOT}/printer/q2-printer.sh" "${PRINTER_USER}@${PRINTER_IP}:${PRINTER_WORK}/" \
+        || { warn "HelixScreen not updated: could not copy q2-printer.sh to the printer"; return 0; }
+    if [ "${UNATTENDED:-0}" = 1 ]; then
+        pssh "sudo -n /bin/bash ${PRINTER_WORK}/q2-printer.sh helixscreen-update ${HELIXSCREEN_REPO} ${HELIXSCREEN_VERSION}"
+    else
+        proot helixscreen-update "$HELIXSCREEN_REPO" "$HELIXSCREEN_VERSION"
+    fi || { warn "HelixScreen update to ${HELIXSCREEN_VERSION} failed; update it from its Settings > Updates"; return 0; }
+    ok "HelixScreen ${HELIXSCREEN_VERSION}"
+}
+
 # Point HelixScreen (the touchscreen UI) at the host's Moonraker, installing it if needed.
 printer_helixscreen() {
-    local settings="/home/${PRINTER_USER}/helixscreen/config/settings.json"
+    local settings="${HELIXSCREEN_DIR}/config/settings.json"
     if ! pssh "test -f ${settings}"; then
         confirm "Install HelixScreen on the printer touchscreen (stock Qidi UI needs a local Klipper)?" y || return 0
-        info "Installing HelixScreen on the printer: download and setup take a few minutes; its installer may ask for the printer sudo password"
-        pssh -t "curl -sSL https://releases.helixscreen.org/install.sh | sh" \
+        info "Installing HelixScreen ${HELIXSCREEN_VERSION} on the printer: download and setup take a few minutes; its installer may ask for the printer sudo password"
+        pssh -t "curl -fsSL $(helixscreen_installer_url) | sh -s -- --version ${HELIXSCREEN_VERSION}" \
             || { warn "HelixScreen install failed; run it later on the printer"; return 0; }
         pssh "test -f ${settings}" || {
             warn "HelixScreen: in its first-run wizard, set Moonraker to ${HOST_IP}:7125"; return 0; }
+    else
+        printer_helixscreen_update
     fi
     pssh "python3 - ${settings} ${HOST_IP}" <<'EOF' || { warn "could not update ${settings}: set Moonraker to ${HOST_IP}:7125 in HelixScreen"; return 0; }
 import json, sys
