@@ -32,3 +32,5 @@ echo "== re-run (update path must be idempotent)"
 as_q2 './install.sh host --ci --yes && scripts/validate-config.sh ~/dist'
 echo "== unattended update, user phase (what Moonraker triggers)"
 as_q2 './install.sh _update-user --unattended --ci && scripts/validate-config.sh ~/dist'
+echo "== a config file edited by hand is kept, listed, and taken back with use-new"
+as_q2 'tests/host/kept-configs.sh && scripts/validate-config.sh ~/dist'
