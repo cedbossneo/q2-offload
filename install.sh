@@ -9,6 +9,7 @@
 #   ./install.sh printer         (re)configure only the printer board (proxies, HelixScreen)
 #   ./install.sh flash           reflash the MCUs, then bring Klipper to the same version
 #   ./install.sh status          show what is installed and running
+#   ./install.sh use-new         take the new version of the config files an update kept (*.new)
 #   ./install.sh check           check that every installed service answers
 #   ./install.sh calibrate       check the load cell (three taps), then offer PID and input shaper
 #
@@ -55,11 +56,11 @@ fi
 ALL_COMPONENTS=mainsail,fluidd,spoolman,autopa,detect
 SETTINGS="${STATE_DIR}/settings.env"
 
-usage() { sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 command="install"
 case "${1:-}" in
-    install|update|host|printer|flash|status|check|calibrate|_update-check|_update-user) command="$1"; shift ;;
+    install|update|host|printer|flash|status|check|calibrate|use-new|_update-check|_update-user) command="$1"; shift ;;
     -h|--help) usage ;;
 esac
 while [ $# -gt 0 ]; do
@@ -277,6 +278,7 @@ EOF
     fi
     local healthy=0
     verify_install || healthy=1
+    kept_configs_report
     final_notes "$healthy"
 }
 
@@ -306,7 +308,10 @@ EOF
     wait_ready || true
     printer_helixscreen_update
     [ "$KEEP_KLIPPER" = 1 ] && warn "Klipper kept at $(klipper_version): run ./install.sh flash to move to $(firmware_id)"
-    verify_install
+    local healthy=0
+    verify_install || healthy=1
+    kept_configs_report
+    return "$healthy"
 }
 
 # Host Klipper and MCU firmware are built from the same tree: without a flash, the host
@@ -352,6 +357,8 @@ do_update_unattended() {
         sleep 5
     fi
     wait_ready || true
+    local configs=()
+    mapfile -t configs < <(kept_configs_lines)
     if [ -f "${STATE_DIR}/klipper-kept" ]; then
         local kept
         kept="$(cat "${STATE_DIR}/klipper-kept")"
@@ -360,7 +367,10 @@ do_update_unattended() {
             "Everything was updated except Klipper: the new Klipper needs the printer boards flashed (${kept:-unknown} -> $(firmware_id)), which is never done from here." \
             "Your printer works as before. To get the new Klipper, when no print is running and you are next to the printer, open a terminal on a computer and run:" \
             "ssh ${USER}@${HOST_IP}" \
-            "cd ~/q2-offload && ./install.sh flash"
+            "cd ~/q2-offload && ./install.sh flash" \
+            "${configs[@]}"
+    elif [ "${#configs[@]}" -gt 0 ]; then
+        notify_dialog "update done, some config files kept" "${configs[@]}"
     else
         notify "update done (firmware $(firmware_id))"
     fi
@@ -430,11 +440,13 @@ case "$command" in
     update) if [ "$UNATTENDED" = 1 ] && [ "$(id -u)" = 0 ]; then do_update_unattended; else do_update; fi ;;
     _update-check) do_update_check ;;
     _update-user) do_update_user ;;
-    host) preflight; banner; host_install_all; in_ci || host_start ;;
+    host) preflight; banner; host_install_all; in_ci || host_start; kept_configs_report ;;
     printer) preflight; printer_prepare; printer_proxies; printer_helixscreen ;;
     flash) preflight; printing && die "a print is running"; host_firmware; printer_prepare; printer_convert
         host_klipper; proot proxies-start; host_start ;;
     status) do_status ;;
+    use-new) [ -f "$SETTINGS" ] || in_ci || die "not installed yet"
+        printing && die "a print is running: run it after the print"; use_new_configs ;;
     check) [ -f "$SETTINGS" ] || die "not installed yet"; verify_install ;;
     calibrate) [ -f "$SETTINGS" ] || die "not installed yet"
         printing && die "a print is running"; klipper_ready || die "Klipper is not ready"

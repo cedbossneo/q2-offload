@@ -47,8 +47,12 @@ is offered.
 
 ## What is yours
 
-- Your edits to the installed config files are kept. When q2-offload changes one of them, the
-  new version is written next to yours as `*.new`: compare them when you have a moment.
+- Your edits to the installed config files are kept, and so are files copied there by hand.
+  When q2-offload changes one of them, the new version is written next to yours as `*.new`,
+  and the end of the update lists them: in the dialog in Mainsail or Fluidd, and in the
+  terminal. Compare each with its `.new`; to take the new versions, when no print is running,
+  run `cd ~/q2-offload && ./install.sh use-new` on the host. It keeps yours as `.bak-<date>`
+  and restarts Klipper. `printer.cfg` is never replaced: its `.new` is only for comparison.
 - `printer.cfg` and `moonraker.conf` are yours after the first install: updates don't change
   them. When a version brings something worth adding there, the
   [older installs](../reference/older-installs.md) page says what.

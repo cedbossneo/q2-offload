@@ -8,6 +8,9 @@ CFG="${DATA}/config"
 BOX_BOWDEN_LENGTH=763.2
 STATE_DIR="${HOME}/.config/q2-offload"
 MANIFEST="${STATE_DIR}/installed-files.sha256"
+# Config files the last update kept because they were edited (or copied by hand), one path per
+# line: the new version is next to each as .new. Shown at the end of the install or update.
+KEPT_CONFIGS="${STATE_DIR}/kept-configs"
 KLIPPY_ENV="${HOME}/klippy-env"
 NGINX_SITE=/etc/nginx/sites-available/q2-offload
 
@@ -89,6 +92,47 @@ notify_dialog() {
         localhost:7125/printer/gcode/script 2>/dev/null || true
 }
 
+# kept_configs_lines: what to tell about the config files the update kept, one line each;
+# nothing when it kept none
+kept_configs_lines() {
+    local f
+    [ -s "$KEPT_CONFIGS" ] || return 0
+    echo "These config files were kept as they are, because they were edited or copied by hand. The new version of each is next to it as .new:"
+    while read -r f; do echo "${f#"${HOME}"/}"; done < "$KEPT_CONFIGS"
+    echo "Compare each with its .new (Mainsail: Machine; Fluidd: Configuration). To take the new versions (yours are kept as .bak-DATE, Klipper restarts), when no print is running:"
+    echo "ssh ${USER}@${HOST_IP:-HOST}"
+    echo "cd ~/q2-offload && ./install.sh use-new"
+}
+
+# Same, at the end of an install or update in a terminal
+kept_configs_report() {
+    local lines
+    lines="$(kept_configs_lines)"
+    [ -n "$lines" ] || return 0
+    printf '\n%sConfig files kept%s\n' "${C_WARN}" "${C_OFF}"
+    printf '  %s\n' "${lines//$'\n'/$'\n'  }"
+}
+
+# use-new: replace each kept config file by its .new; the user's copy stays as .bak-<date>
+use_new_configs() {
+    local f stamp changed=0
+    [ -s "$KEPT_CONFIGS" ] || { info "no config file waiting for its new version"; return 0; }
+    stamp="$(date +%Y%m%d-%H%M%S)"
+    while read -r f; do
+        [ -e "${f}.new" ] || continue
+        cp -p "$f" "${f}.bak-${stamp}"
+        mv "${f}.new" "$f"
+        chmod --reference="${f}.bak-${stamp}" "$f"
+        manifest_set "$(sha256sum < "$f" | cut -d' ' -f1)" "$f"
+        ok "${f#"${HOME}"/} (yours: ${f#"${HOME}"/}.bak-${stamp})"
+        changed=1
+    done < "$KEPT_CONFIGS"
+    : > "$KEPT_CONFIGS"
+    [ "$changed" = 1 ] || return 0
+    in_ci && return 0
+    curl -s -o /dev/null -X POST localhost:7125/printer/restart && info "Klipper restarting with the new config"
+}
+
 # Systemd/nginx/docker are skipped in CI containers
 in_ci() { [ "${Q2_CI:-0}" = 1 ]; }
 
@@ -134,6 +178,8 @@ install_config() {
     local src="$1" dest="$2" old_sum cur_sum new_sum
     mkdir -p "$(dirname "$dest")" "$STATE_DIR"
     touch "$MANIFEST"
+    # mktemp makes the rendered file 0600: a file cp creates would keep that mode
+    chmod 644 "$src"
     new_sum="$(sha256sum < "$src" | cut -d' ' -f1)"
     if [ -e "$dest" ]; then
         cur_sum="$(sha256sum < "$dest" | cut -d' ' -f1)"
@@ -143,8 +189,12 @@ install_config() {
             return 0
         fi
         if [ -n "$old_sum" ] && [ "$cur_sum" != "$old_sum" ]; then
+            rm -f "${dest}.new"
             cp "$src" "${dest}.new"
             warn "kept your edited ${dest#"${HOME}"/}; new version saved as ${dest#"${HOME}"/}.new"
+            # printer.cfg holds the calibrations: it is never replaced, its .new is for reference
+            [ "$dest" = "${CFG}/printer.cfg" ] || grep -qxF "$dest" "$KEPT_CONFIGS" 2>/dev/null \
+                || echo "$dest" >> "$KEPT_CONFIGS"
             return 0
         fi
         if [ -z "$old_sum" ]; then
@@ -363,6 +413,8 @@ host_happy_hare() {
 
 host_config() {
     local f tmp
+    mkdir -p "$STATE_DIR"
+    : > "$KEPT_CONFIGS"
     tmp="$(mktemp)"
     for f in "${Q2_ROOT}"/config/klipper/*.cfg; do
         render "$f" | toggle > "$tmp"
