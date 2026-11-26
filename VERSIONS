@@ -51,8 +51,8 @@ SPOOLMAN_VERSION=v0.27.1
 # obico-server's release branch (x86_64 and arm64), pinned by digest. OBICO_SERVER_REF is the
 # commit it was built from; bump.sh moves both together.
 OBICO_ML_API_IMAGE=ghcr.io/thespaghettidetective/obico-ml-api-cpu
-OBICO_ML_API_DIGEST=sha256:5dd41a6eb593721b91961e4e780ff373a6a1b90702c0e3dc3032d86474ae5f92
-OBICO_SERVER_REF=ea3f98cc1099f4ac6431216923f93e2367931e6e
+OBICO_ML_API_DIGEST=sha256:eb5d4c5749be156f1ee2354d6b36e7bea19215fac663e4e493b78722cd83967e
+OBICO_SERVER_REF=da0a2fe268b2e5e29711803d79dbe75765f243f1
 # Hosts with an Intel GPU run q2-offload's build of that same commit instead, on the GPU
 # (detect/ml-api/Containerfile.intel, built and published by CI).
 OBICO_SERVER_REPO=https://github.com/TheSpaghettiDetective/obico-server.git
