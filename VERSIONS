@@ -45,14 +45,14 @@ FLUIDD_VERSION=v1.38.1
 # HelixScreen on the printer touchscreen: install.sh installs this release on the printer
 # board and moves it there at every update (never back to an older one the user chose).
 HELIXSCREEN_REPO=prestonbrown/helixscreen
-HELIXSCREEN_VERSION=v1.1.0
+HELIXSCREEN_VERSION=v1.1.1
 SPOOLMAN_VERSION=v0.27.1
 # Obico's ML API for failure detection (detect/): the CPU image Obico publishes from
 # obico-server's release branch (x86_64 and arm64), pinned by digest. OBICO_SERVER_REF is the
 # commit it was built from; bump.sh moves both together.
 OBICO_ML_API_IMAGE=ghcr.io/thespaghettidetective/obico-ml-api-cpu
-OBICO_ML_API_DIGEST=sha256:eb5d4c5749be156f1ee2354d6b36e7bea19215fac663e4e493b78722cd83967e
-OBICO_SERVER_REF=da0a2fe268b2e5e29711803d79dbe75765f243f1
+OBICO_ML_API_DIGEST=sha256:8e04d4f43d239ed5704f01d850ac94476283a7dfafa15d588855402ecb798a27
+OBICO_SERVER_REF=c2ce21df47f5cdb6ba56436f674304554252ab43
 # Hosts with an Intel GPU run q2-offload's build of that same commit instead, on the GPU
 # (detect/ml-api/Containerfile.intel, built and published by CI).
 OBICO_SERVER_REPO=https://github.com/TheSpaghettiDetective/obico-server.git
